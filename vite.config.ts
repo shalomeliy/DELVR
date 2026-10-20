@@ -26,11 +26,13 @@ function devApi(routesKey: string | undefined): Plugin {
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   return {
+    define: { 'import.meta.env.VITE_BUILD': JSON.stringify((process.env.VERCEL_GIT_COMMIT_SHA ?? 'dev').slice(0, 7)) },
     plugins: [
       react(),
       devApi(env.GOOGLE_ROUTES_KEY || env.VITE_GOOGLE_MAPS_KEY),
       VitePWA({
         registerType: 'autoUpdate',
+        injectRegister: false,
         includeAssets: ['favicon.svg'],
         manifest: {
           name: 'Delvr - מסלול לשליח',
@@ -45,7 +47,7 @@ export default defineConfig(({ mode }) => {
             { src: 'icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
           ],
         },
-        workbox: { navigateFallbackDenylist: [/^\/api\//] },
+        workbox: { navigateFallbackDenylist: [/^\/api\//], skipWaiting: true, clientsClaim: true, cleanupOutdatedCaches: true },
       }),
     ],
     test: { include: ['tests/**/*.test.ts'] },

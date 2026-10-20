@@ -1,3 +1,5 @@
+import { logInfo, logWarn } from './log';
+
 // Chrome's built-in recognizer in Hebrew. It stops after silence, so we restart it until the courier presses stop.
 type Rec = {
   lang: string; continuous: boolean; interimResults: boolean;
@@ -29,11 +31,13 @@ export function startDictation(handlers: { onText: (finalText: string, interim: 
     handlers.onText(finalText.trim(), interim);
   };
   rec.onerror = (e) => {
+    logWarn('speech_error', { error: e.error });
     if (e.error === 'no-speech' || e.error === 'aborted') return;
     wanted = false;
     handlers.onError(e.error === 'not-allowed' ? 'אין הרשאה למיקרופון. אשר גישה בדפדפן' : `שגיאת הקלטה: ${e.error}`);
   };
   rec.onend = () => { if (wanted) { try { rec.start(); return; } catch { /* fall through */ } } handlers.onEnd(); };
   rec.start();
-  return { stop() { wanted = false; rec.stop(); } };
+  logInfo('speech_start');
+  return { stop() { wanted = false; rec.stop(); logInfo('speech_stop', { transcript: finalText.trim() }); } };
 }

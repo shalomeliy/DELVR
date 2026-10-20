@@ -4,6 +4,7 @@ import { parseTranscript } from './domain/parser.js';
 import type { Place, Plan, Stop } from './domain/types';
 import { MAX_STOPS } from './domain/types';
 import { geocode, reverseGeocode } from './services/geocode';
+import { buildReport, logError, logInfo, shareReport } from './services/log';
 import { hasMapsKey } from './services/maps';
 import { optimizePlan } from './services/optimize';
 import { loadPlan, recall, remember, savePlan } from './store/db';
@@ -15,7 +16,8 @@ import { StopList } from './ui/StopList';
 
 export default function App() {
   const [plan, setPlanState] = useState<Plan | null>(null);
-  const [error, setError] = useState('');
+  const [error, setErrorState] = useState('');
+  const setError = useCallback((msg: string) => { if (msg) logError('shown_error', msg); setErrorState(msg); }, []);
   const [notice, setNotice] = useState('');
   const [optimizing, setOptimizing] = useState(false);
   const planRef = useRef<Plan | null>(null);
@@ -45,7 +47,7 @@ export default function App() {
       setPlan((p) => updateStop(p, stop.id, { verify: 'needs_fix', fixReason: (e as Error).message }));
       setError((e as Error).message);
     }
-  }, [setPlan]);
+  }, [setPlan, setError]);
 
   // Re-check anything left pending (for example after a reload mid-verification).
   const started = useRef(false);
@@ -64,6 +66,7 @@ export default function App() {
       const r = await geocode(input, city);
       if (!r.location) { setError(`לא מצאתי את "${input}". נסה לכתוב רחוב, מספר ועיר`); return; }
       const place: Place = { input, address: r.address, location: r.location };
+      logInfo('place_set', { which, input, address: r.address });
       setPlan((p) => (which === 'start' ? { ...p, start: place, optimized: undefined } : { ...p, end: place, optimized: undefined }));
     } catch (e) { setError((e as Error).message); }
   };
@@ -82,6 +85,7 @@ export default function App() {
   const onAdd = (text: string) => {
     setError(''); setNotice('');
     const fresh = stopsFromText(text, startCity(plan));
+    logInfo('add_stops', { text, startCity: startCity(plan), parsed: fresh.map((f) => f.input) });
     if (!fresh.length) { setError('לא זיהיתי כתובות בטקסט'); return; }
     const { plan: next, dropped } = addStops(plan, fresh);
     setPlan(() => next);
@@ -93,6 +97,7 @@ export default function App() {
     const s = plan.stops.find((x) => x.id === id);
     if (!s) return;
     const city = parseTranscript(input, { defaultCity: startCity(plan) })[0]?.city ?? s.city;
+    logInfo('fix_retry', { from: s.input, to: input });
     const updated: Stop = { ...s, input: input.trim(), city, verify: 'pending', fixReason: undefined, address: undefined, location: undefined };
     setPlan((p) => updateStop(p, id, updated));
     verifyStop(updated);
@@ -101,6 +106,7 @@ export default function App() {
   const onAccept = (id: string) => {
     const s = plan.stops.find((x) => x.id === id);
     if (!s?.address || !s.location) return;
+    logInfo('fix_accept', { spoken: s.spoken, address: s.address });
     remember(s.spoken, { address: s.address, location: s.location });
     if (s.input !== s.spoken) remember(s.input, { address: s.address, location: s.location });
     setPlan((p) => updateStop(p, id, { verify: 'ok', fixReason: undefined }));
@@ -117,6 +123,22 @@ export default function App() {
     finally { setOptimizing(false); }
   };
 
+  const sendLogs = async () => {
+    const p = planRef.current ?? plan;
+    const report = await buildReport({
+      plan: {
+        start: p.start, end: p.end, startCity: startCity(p),
+        stops: p.stops.map((s) => ({ spoken: s.spoken, input: s.input, city: s.city, verify: s.verify, fixReason: s.fixReason, address: s.address, located: !!s.location, order: s.order, delivery: s.delivery })),
+        optimized: p.optimized && { stops: p.optimized.order.length, totalDurationSec: p.optimized.totalDurationSec, totalDistanceM: p.optimized.totalDistanceM, at: new Date(p.optimized.at).toISOString() },
+      },
+      screenError: error || undefined,
+    });
+    const how = await shareReport(report);
+    logInfo('logs_shared', how);
+    if (how === 'downloaded') setNotice('קובץ הלוגים ירד לטלפון (בתיקיית ההורדות). אפשר לצרף אותו בוואטסאפ');
+    if (how === 'copied') setNotice('הלוגים הועתקו. הדבק אותם בוואטסאפ');
+  };
+
   const reset = () => { if (confirm('למחוק את כל העצירות ולהתחיל מסלול חדש?')) setPlan((p) => ({ ...emptyPlan(), start: p.start, end: p.end })); };
 
   const gate = canOptimize(plan);
@@ -126,7 +148,10 @@ export default function App() {
     <main className="app">
       <header className="top">
         <h1>Delvr</h1>
-        {plan.stops.length > 0 && <button type="button" className="link" onClick={reset}>מסלול חדש</button>}
+        <div>
+          <button type="button" className="link" onClick={sendLogs}>שלח לוגים</button>
+          {plan.stops.length > 0 && <button type="button" className="link" onClick={reset}>מסלול חדש</button>}
+        </div>
       </header>
       {!hasMapsKey() && <div className="banner bad">חסר מפתח Google. הוסף VITE_GOOGLE_MAPS_KEY לקובץ .env.local</div>}
       {error && <div className="banner bad" role="alert">{error}</div>}
@@ -134,7 +159,7 @@ export default function App() {
 
       {plan.optimized ? (
         <RouteView plan={plan} busy={optimizing} onReoptimize={optimize}
-          onDelivery={(id, d) => setPlan((p) => updateStop(p, id, { delivery: d }, true))} />
+          onDelivery={(id, d) => { logInfo('delivery', { id, status: d }); setPlan((p) => updateStop(p, id, { delivery: d }, true)); }} />
       ) : null}
 
       {!plan.optimized && <StartPoint start={plan.start} end={plan.end} onVerify={verifyPlace} onHere={useHere}
@@ -152,6 +177,7 @@ export default function App() {
           {!gate.ok && <div className="muted small center">{gate.why}</div>}
         </div>
       )}
+      <footer className="muted small center">גרסה {import.meta.env.VITE_BUILD ?? 'dev'}</footer>
     </main>
   );
 }

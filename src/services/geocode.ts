@@ -1,4 +1,5 @@
 import type { LatLng } from '../domain/types';
+import { logInfo, logWarn, logError } from './log';
 import { loadMaps } from './maps';
 
 export type GeocodeResult =
@@ -41,14 +42,17 @@ export async function geocode(query: string, city: string | null): Promise<Geoco
   try {
     const { results } = await new maps.Geocoder().geocode({ address: query, componentRestrictions: { country: 'IL' }, language: 'he', region: 'IL' });
     const top = results[0];
-    return judge(top && {
+    const verdict = judge(top && {
       formatted_address: top.formatted_address.replace(/, ישראל$/, ''),
       partial_match: top.partial_match,
       address_components: top.address_components,
       location: top.geometry.location.toJSON(),
     }, city);
+    (verdict.ok ? logInfo : logWarn)('geocode', { query, city, ok: verdict.ok, reason: verdict.ok ? undefined : verdict.reason, google: top?.formatted_address, partial: top?.partial_match, results: results.length });
+    return verdict;
   } catch (e) {
     const code = (e as { code?: string }).code;
+    logError('geocode_failed', { query, city, code, message: (e as Error).message });
     if (code === 'ZERO_RESULTS') return { ok: false, reason: 'Google לא מצא את הכתובת' };
     if (code === 'REQUEST_DENIED') throw new Error('Google דחה את הבקשה. בדוק ש-Geocoding API מופעל בפרויקט');
     throw new Error(`שגיאה מ-Google: ${code ?? (e as Error).message}`);
