@@ -29,6 +29,11 @@ describe('plan', () => {
     const stops = stopsFromText('הרצל 3 התורן 4 רחובות', startCity(plan));
     expect(stops.map((s) => s.input)).toEqual(['הרצל 3, יבנה', 'התורן 4, רחובות']);
   });
+  it('reads the start city from Google\'s formatted address with commas', () => {
+    const plan = { ...emptyPlan(), start: { input: 'התורן 3 יבנה', address: 'התורן 3, יבנה' } };
+    expect(startCity(plan)).toBe('יבנה');
+    expect(stopsFromText('דוכיפת 3', startCity(plan))[0].input).toBe('דוכיפת 3, יבנה');
+  });
   it('blocks ordering until every stop is verified', () => {
     let plan: Plan = { ...emptyPlan(), start: { input: 'x', location: { lat: 31.8, lng: 34.7 } } };
     plan = addStops(plan, stopsFromText('הרצל 3 יבנה', 'יבנה')).plan;

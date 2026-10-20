@@ -10,8 +10,9 @@ export const newId = () => `s${Date.now().toString(36)}${(seq++).toString(36)}`;
 
 /** City of the start address, inherited by stops dictated without a city (user decision 2026-10-20). */
 export function startCity(plan: Plan): string | null {
-  const text = plan.start.address ?? plan.start.input;
-  return text ? parseTranscript(text)[0]?.city ?? null : null;
+  // Google writes "התורן 3, יבנה": without dropping the comma the city lands in a separate chunk.
+  const cityOf = (text?: string) => (text ? parseTranscript(text.replace(/,/g, ' ')).find((a) => a.city)?.city ?? null : null);
+  return cityOf(plan.start.address) ?? cityOf(plan.start.input);
 }
 
 export function stopsFromText(text: string, defaultCity: string | null): Stop[] {
