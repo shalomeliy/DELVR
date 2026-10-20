@@ -65,8 +65,9 @@ describe('plan', () => {
     const plan = { ...base, stops: base.stops.map((s) => ({ ...s, verify: 'ok' as const, location: at })) };
     expect(findDuplicate(plan, plan.stops[1])?.id).toBe(plan.stops[0].id);
   });
-  it('new plans end at the last stop; old saved plans keep their end address', () => {
-    expect(endModeOf(emptyPlan())).toBe('open');
-    expect(endModeOf({ start: { input: '' }, end: { input: 'x' }, stops: [] })).toBe('address');
+  it('without an end address the route returns to the start; with one it ends there', () => {
+    expect(endModeOf(emptyPlan())).toBe('return');
+    expect(endModeOf({ start: { input: '' }, end: { input: 'רחובות' }, stops: [] })).toBe('return');
+    expect(endModeOf({ start: { input: '' }, end: { input: 'רחובות', location: { lat: 31.89, lng: 34.81 } }, stops: [] })).toBe('address');
   });
 });

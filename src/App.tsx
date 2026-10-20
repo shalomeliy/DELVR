@@ -158,7 +158,7 @@ export default function App() {
     if (how === 'copied') setNotice('הלוגים הועתקו. הדבק אותם בוואטסאפ');
   };
 
-  const reset = () => { if (confirm('למחוק את כל העצירות ולהתחיל מסלול חדש?')) setPlan((p) => ({ ...emptyPlan(), start: p.start, endMode: p.endMode, end: p.end })); };
+  const reset = () => { if (confirm('למחוק את כל העצירות ולהתחיל מסלול חדש?')) setPlan((p) => ({ ...emptyPlan(), start: p.start, end: p.end })); };
 
   const gate = canOptimize(plan);
   const needsFix = plan.stops.filter((s) => s.verify === 'needs_fix' && s.delivery === 'todo');
@@ -181,8 +181,8 @@ export default function App() {
           onDelivery={(id, d) => { logInfo('delivery', { id, status: d }); setPlan((p) => updateStop(p, id, { delivery: d }, true)); }} />
       ) : null}
 
-      {!plan.optimized && <StartPoint start={plan.start} end={plan.end} endMode={endModeOf(plan)} onVerify={verifyPlace} onHere={useHere}
-        onEndMode={(mode) => setPlan((p) => ({ ...p, endMode: mode, end: mode === 'address' ? p.end ?? { input: '' } : p.end, optimized: undefined }))} />}
+      {!plan.optimized && <StartPoint start={plan.start} end={plan.end} onVerify={verifyPlace} onHere={useHere}
+        onClearEnd={() => setPlan((p) => ({ ...p, end: null, optimized: undefined }))} />}
       <FixList stops={needsFix} onRetry={onRetry} onAccept={onAccept} onRemove={(id) => setPlan((p) => removeStop(p, id))} />
       {!plan.optimized && <StopList stops={plan.stops} onRemove={(id) => setPlan((p) => removeStop(p, id))}
         onOrder={(id, order) => setPlan((p) => updateStop(p, id, { order }))} />}

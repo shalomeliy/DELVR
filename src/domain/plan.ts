@@ -3,10 +3,10 @@ import { parseTranscript } from './parser.js';
 import type { EndMode, Plan, Stop } from './types';
 import { MAX_STOPS } from './types';
 
-export const emptyPlan = (): Plan => ({ start: { input: '' }, endMode: 'open', end: null, stops: [] });
+export const emptyPlan = (): Plan => ({ start: { input: '' }, end: null, stops: [] });
 
-/** Plans saved before endMode existed: an end address means 'address', otherwise the new default. */
-export const endModeOf = (plan: Plan): EndMode => plan.endMode ?? (plan.end ? 'address' : 'open');
+/** The end address is optional: with one the route ends there, without one it returns to the start. */
+export const endModeOf = (plan: Plan): EndMode => (plan.end?.location ? 'address' : 'return');
 
 let seq = 0;
 export const newId = () => `s${Date.now().toString(36)}${(seq++).toString(36)}`;
@@ -62,7 +62,6 @@ export function removeStop(plan: Plan, id: string): Plan {
 
 export function canOptimize(plan: Plan): { ok: boolean; why?: string } {
   if (!plan.start.location) return { ok: false, why: 'קודם לאמת את כתובת היציאה' };
-  if (endModeOf(plan) === 'address' && !plan.end?.location) return { ok: false, why: 'קודם לאמת את כתובת הסיום' };
   const todo = plan.stops.filter((s) => s.delivery === 'todo');
   if (!todo.length) return { ok: false, why: 'אין עצירות לסדר' };
   if (todo.some((s) => s.verify === 'pending')) return { ok: false, why: 'מאמת כתובות מול Google...' };
