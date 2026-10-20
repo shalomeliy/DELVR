@@ -1,9 +1,12 @@
 // Pure plan operations, kept out of React so they are easy to test.
 import { parseTranscript } from './parser.js';
-import type { Plan, Stop } from './types';
+import type { EndMode, Plan, Stop } from './types';
 import { MAX_STOPS } from './types';
 
-export const emptyPlan = (): Plan => ({ start: { input: '' }, end: null, stops: [] });
+export const emptyPlan = (): Plan => ({ start: { input: '' }, endMode: 'open', end: null, stops: [] });
+
+/** Plans saved before endMode existed: an end address means 'address', otherwise the new default. */
+export const endModeOf = (plan: Plan): EndMode => plan.endMode ?? (plan.end ? 'address' : 'open');
 
 let seq = 0;
 export const newId = () => `s${Date.now().toString(36)}${(seq++).toString(36)}`;
@@ -28,10 +31,25 @@ export function stopsFromText(text: string, defaultCity: string | null): Stop[] 
   }));
 }
 
-/** Adds stops up to the v1 cap. Returns how many did not fit. */
-export function addStops(plan: Plan, stops: Stop[]): { plan: Plan; dropped: number } {
+const sameKey = (s: string) => s.replace(/[,.\-־'"׳״]/g, ' ').replace(/^(רחוב|רח)\s+/, '').replace(/\s+/g, ' ').trim();
+
+/** Adds stops up to the v1 cap, skipping addresses already in the list. */
+export function addStops(plan: Plan, stops: Stop[]): { plan: Plan; dropped: number; duplicates: number } {
+  const seen = new Set(plan.stops.flatMap((s) => [sameKey(s.input), sameKey(s.spoken)]));
+  const unique = stops.filter((s) => { const k = sameKey(s.input); if (seen.has(k)) return false; seen.add(k); return true; });
   const room = Math.max(0, MAX_STOPS - plan.stops.length);
-  return { plan: { ...plan, stops: [...plan.stops, ...stops.slice(0, room)], optimized: undefined }, dropped: Math.max(0, stops.length - room) };
+  return {
+    plan: { ...plan, stops: [...plan.stops, ...unique.slice(0, room)], optimized: undefined },
+    dropped: Math.max(0, unique.length - room),
+    duplicates: stops.length - unique.length,
+  };
+}
+
+/** A stop Google resolved to the same place as another stop is a duplicate. */
+export function findDuplicate(plan: Plan, stop: Stop): Stop | undefined {
+  if (!stop.location) return undefined;
+  return plan.stops.find((o) => o.id !== stop.id && o.verify === 'ok' && o.location &&
+    Math.abs(o.location.lat - stop.location!.lat) < 1e-5 && Math.abs(o.location.lng - stop.location!.lng) < 1e-5);
 }
 
 export function updateStop(plan: Plan, id: string, patch: Partial<Stop>, keepRoute = false): Plan {
@@ -44,7 +62,7 @@ export function removeStop(plan: Plan, id: string): Plan {
 
 export function canOptimize(plan: Plan): { ok: boolean; why?: string } {
   if (!plan.start.location) return { ok: false, why: 'קודם לאמת את כתובת היציאה' };
-  if (plan.end && !plan.end.location) return { ok: false, why: 'קודם לאמת את כתובת הסיום' };
+  if (endModeOf(plan) === 'address' && !plan.end?.location) return { ok: false, why: 'קודם לאמת את כתובת הסיום' };
   const todo = plan.stops.filter((s) => s.delivery === 'todo');
   if (!todo.length) return { ok: false, why: 'אין עצירות לסדר' };
   if (todo.some((s) => s.verify === 'pending')) return { ok: false, why: 'מאמת כתובות מול Google...' };

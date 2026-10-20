@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { addStops, canOptimize, emptyPlan, removeStop, startCity, stopsFromText, updateStop } from './domain/plan';
+import { addStops, canOptimize, emptyPlan, endModeOf, findDuplicate, removeStop, startCity, stopsFromText, updateStop } from './domain/plan';
 import { parseTranscript } from './domain/parser.js';
 import type { Place, Plan, Stop } from './domain/types';
 import { MAX_STOPS } from './domain/types';
@@ -50,6 +50,17 @@ export default function App() {
     }
   }, [setPlan, setError]);
 
+  // Two stops Google placed at the same spot are one delivery: keep the first, drop the rest.
+  useEffect(() => {
+    if (!plan) return;
+    const dups = plan.stops.filter((s) => s.verify === 'ok' && findDuplicate({ ...plan, stops: plan.stops.slice(0, plan.stops.indexOf(s)) }, s));
+    if (!dups.length) return;
+    const ids = new Set(dups.map((d) => d.id));
+    setPlan((p) => ({ ...p, stops: p.stops.filter((s) => !ids.has(s.id)), optimized: undefined }));
+    setNotice(`${dups.length === 1 ? 'כתובת כפולה הוסרה' : `${dups.length} כתובות כפולות הוסרו`}: ${dups.map((d) => d.address ?? d.input).join(', ')}`);
+    logInfo('duplicates_removed', dups.map((d) => d.address ?? d.input));
+  }, [plan, setPlan]);
+
   // Re-check anything left pending (for example after a reload mid-verification).
   const started = useRef(false);
   useEffect(() => {
@@ -88,9 +99,13 @@ export default function App() {
     const fresh = stopsFromText(text, startCity(plan));
     logInfo('add_stops', { text, startCity: startCity(plan), parsed: fresh.map((f) => f.input) });
     if (!fresh.length) { setError('לא זיהיתי כתובות בטקסט'); return; }
-    const { plan: next, dropped } = addStops(plan, fresh);
+    const { plan: next, dropped, duplicates } = addStops(plan, fresh);
     setPlan(() => next);
-    if (dropped) setNotice(`${dropped} כתובות לא נוספו: אפשר עד ${MAX_STOPS} עצירות בגרסה הזו`);
+    const notes = [];
+    if (duplicates) notes.push(duplicates === 1 ? 'כתובת כפולה אחת לא נוספה' : `${duplicates} כתובות כפולות לא נוספו`);
+    if (dropped) notes.push(`${dropped} כתובות לא נוספו: אפשר עד ${MAX_STOPS} עצירות בגרסה הזו`);
+    if (notes.length) setNotice(notes.join('. '));
+    if (duplicates) logInfo('duplicates_skipped', duplicates);
     next.stops.filter((s) => fresh.some((f) => f.id === s.id) && s.verify === 'pending').forEach(verifyStop);
   };
 
@@ -131,7 +146,7 @@ export default function App() {
     const p = planRef.current ?? plan;
     const report = await buildReport({
       plan: {
-        start: p.start, end: p.end, startCity: startCity(p),
+        start: p.start, endMode: endModeOf(p), end: p.end, startCity: startCity(p),
         stops: p.stops.map((s) => ({ spoken: s.spoken, input: s.input, city: s.city, verify: s.verify, fixReason: s.fixReason, address: s.address, located: !!s.location, order: s.order, delivery: s.delivery })),
         optimized: p.optimized && { stops: p.optimized.order.length, totalDurationSec: p.optimized.totalDurationSec, totalDistanceM: p.optimized.totalDistanceM, at: new Date(p.optimized.at).toISOString() },
       },
@@ -143,7 +158,7 @@ export default function App() {
     if (how === 'copied') setNotice('הלוגים הועתקו. הדבק אותם בוואטסאפ');
   };
 
-  const reset = () => { if (confirm('למחוק את כל העצירות ולהתחיל מסלול חדש?')) setPlan((p) => ({ ...emptyPlan(), start: p.start, end: p.end })); };
+  const reset = () => { if (confirm('למחוק את כל העצירות ולהתחיל מסלול חדש?')) setPlan((p) => ({ ...emptyPlan(), start: p.start, endMode: p.endMode, end: p.end })); };
 
   const gate = canOptimize(plan);
   const needsFix = plan.stops.filter((s) => s.verify === 'needs_fix' && s.delivery === 'todo');
@@ -166,8 +181,8 @@ export default function App() {
           onDelivery={(id, d) => { logInfo('delivery', { id, status: d }); setPlan((p) => updateStop(p, id, { delivery: d }, true)); }} />
       ) : null}
 
-      {!plan.optimized && <StartPoint start={plan.start} end={plan.end} onVerify={verifyPlace} onHere={useHere}
-        onEndMode={(round) => setPlan((p) => ({ ...p, end: round ? null : p.end ?? { input: '' }, optimized: undefined }))} />}
+      {!plan.optimized && <StartPoint start={plan.start} end={plan.end} endMode={endModeOf(plan)} onVerify={verifyPlace} onHere={useHere}
+        onEndMode={(mode) => setPlan((p) => ({ ...p, endMode: mode, end: mode === 'address' ? p.end ?? { input: '' } : p.end, optimized: undefined }))} />}
       <FixList stops={needsFix} onRetry={onRetry} onAccept={onAccept} onRemove={(id) => setPlan((p) => removeStop(p, id))} />
       {!plan.optimized && <StopList stops={plan.stops} onRemove={(id) => setPlan((p) => removeStop(p, id))}
         onOrder={(id, order) => setPlan((p) => updateStop(p, id, { order }))} />}

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { judge, sameCity } from '../src/services/geocode';
 import type { Plan } from '../src/domain/types';
-import { canOptimize, emptyPlan, orderedStops, startCity, stopsFromText, addStops } from '../src/domain/plan';
+import { canOptimize, emptyPlan, endModeOf, findDuplicate, orderedStops, startCity, stopsFromText, addStops } from '../src/domain/plan';
 
 const result = (over: Partial<{ number: boolean; city: string; partial: boolean }> = {}) => ({
   formatted_address: 'הרצל 3, רחובות',
@@ -52,5 +52,21 @@ describe('plan', () => {
     const [a, b] = base.stops;
     const plan = { ...base, optimized: { order: [b.id, a.id], legs: [], totalDurationSec: 0, totalDistanceM: 0, at: 0 } };
     expect(orderedStops(plan).map((s) => s.id)).toEqual([b.id, a.id]);
+  });
+  it('skips addresses already in the list, including a repeat in the same dictation', () => {
+    const first = addStops(emptyPlan(), stopsFromText('הרצל 3 יבנה, דוכיפת 5 יבנה', null));
+    const again = addStops(first.plan, stopsFromText('הרצל 3 יבנה, דוכיפת 5 יבנה, הרצל 3 יבנה, התורן 7 יבנה', null));
+    expect(again.duplicates).toBe(3);
+    expect(again.plan.stops.map((s) => s.input)).toEqual(['הרצל 3, יבנה', 'דוכיפת 5, יבנה', 'התורן 7, יבנה']);
+  });
+  it('finds a stop Google placed at the same spot as another', () => {
+    const base = addStops(emptyPlan(), stopsFromText('הרצל 3 יבנה, הרצל 3א יבנה', null)).plan;
+    const at = { lat: 31.87, lng: 34.74 };
+    const plan = { ...base, stops: base.stops.map((s) => ({ ...s, verify: 'ok' as const, location: at })) };
+    expect(findDuplicate(plan, plan.stops[1])?.id).toBe(plan.stops[0].id);
+  });
+  it('new plans end at the last stop; old saved plans keep their end address', () => {
+    expect(endModeOf(emptyPlan())).toBe('open');
+    expect(endModeOf({ start: { input: '' }, end: { input: 'x' }, stops: [] })).toBe('address');
   });
 });

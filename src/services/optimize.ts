@@ -1,3 +1,4 @@
+import { endModeOf } from '../domain/plan';
 import type { Optimized, Plan } from '../domain/types';
 import { logError, logInfo } from './log';
 
@@ -5,13 +6,14 @@ export async function optimizePlan(plan: Plan, signal?: AbortSignal): Promise<Op
   const stops = plan.stops.filter((s) => s.delivery === 'todo' && s.location);
   if (!plan.start.location) throw new Error('חסרה נקודת יציאה מאומתת');
   const started = Date.now();
-  logInfo('optimize_request', { stops: stops.length, pinned: stops.filter((s) => s.order !== 'auto').length, roundTrip: !plan.end });
+  logInfo('optimize_request', { stops: stops.length, pinned: stops.filter((s) => s.order !== 'auto').length, endMode: endModeOf(plan) });
   const res = await fetch('/api/optimize', {
     method: 'POST', signal,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       origin: plan.start.location,
-      destination: plan.end?.location ?? null,
+      destination: endModeOf(plan) === 'address' ? plan.end?.location ?? null : null,
+      open: endModeOf(plan) === 'open',
       stops: stops.map((s) => ({ id: s.id, ...s.location!, order: s.order })),
     }),
   });

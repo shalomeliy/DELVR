@@ -3,7 +3,8 @@
 
 export interface LatLngIn { lat: number; lng: number }
 export interface StopIn extends LatLngIn { id: string; order?: 'first' | 'auto' | 'last' }
-export interface OptimizeInput { origin: LatLngIn; destination?: LatLngIn | null; stops: StopIn[] }
+/** open: the route ends at the last stop instead of returning to the origin or a destination. */
+export interface OptimizeInput { origin: LatLngIn; destination?: LatLngIn | null; open?: boolean; stops: StopIn[] }
 export interface OptimizeOutput {
   order: string[];
   legs: { durationSec: number; distanceM: number }[];
@@ -37,7 +38,7 @@ export function validate(body: unknown): OptimizeInput {
     ids.add(s.id);
   }
   for (const p of [b.origin, b.destination, ...b.stops]) if (p && !inIsrael(p)) throw new HttpError(400, 'כל הכתובות צריכות להיות בישראל');
-  return { origin: b.origin, destination: b.destination ?? null, stops: b.stops.map((s) => ({ id: s.id, lat: s.lat, lng: s.lng, order: s.order ?? 'auto' })) };
+  return { origin: b.origin, destination: b.destination ?? null, open: b.open === true && b.destination == null, stops: b.stops.map((s) => ({ id: s.id, lat: s.lat, lng: s.lng, order: s.order ?? 'auto' })) };
 }
 
 const wp = (p: LatLngIn) => ({ location: { latLng: { latitude: p.lat, longitude: p.lng } } });
@@ -72,23 +73,42 @@ async function computeRoute(fetchFn: typeof fetch, key: string, origin: LatLngIn
   return data.routes[0];
 }
 
+const R = 6371e3, rad = (d: number) => (d * Math.PI) / 180;
+function distanceM(a: LatLngIn, b: LatLngIn) {
+  const x = Math.sin(rad(b.lat - a.lat) / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(rad(b.lng - a.lng) / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(x));
+}
+
 /**
  * Google cannot pin a waypoint, so only the 'auto' stops are optimized, between the last 'first'
  * stop and the first 'last' stop. With pins, a second (non-optimized) call gives the full legs.
+ *
+ * Open routes (end at the last stop): Google always needs a destination, so the stop farthest from
+ * the start becomes the end and the rest are optimized on the way there. Nearby stops come first.
  */
 export async function optimizeRoute(input: OptimizeInput, key: string, fetchFn: typeof fetch = fetch): Promise<OptimizeOutput> {
-  const end = input.destination ?? input.origin;
   const firsts = input.stops.filter((s) => s.order === 'first');
-  const lasts = input.stops.filter((s) => s.order === 'last');
-  const autos = input.stops.filter((s) => s.order !== 'first' && s.order !== 'last');
+  let lasts = input.stops.filter((s) => s.order === 'last');
+  let autos = input.stops.filter((s) => s.order !== 'first' && s.order !== 'last');
 
   const from = firsts.at(-1) ?? input.origin;
+  if (input.open && !lasts.length && autos.length) {
+    const far = autos.reduce((a, b) => (distanceM(from, b) > distanceM(from, a) ? b : a));
+    autos = autos.filter((s) => s !== far);
+    lasts = [far];
+  }
+  const end = input.destination ?? input.origin;
   const to = lasts[0] ?? end;
+
   const opt = await computeRoute(fetchFn, key, from, to, autos, true);
   const idx = opt.optimizedIntermediateWaypointIndex?.length === autos.length ? opt.optimizedIntermediateWaypointIndex : autos.map((_, i) => i);
   const ordered = [...firsts, ...idx.map((i) => autos[i]), ...lasts];
 
-  const full = firsts.length || lasts.length ? await computeRoute(fetchFn, key, input.origin, end, ordered, false) : opt;
+  // The optimizing call already covers the whole drive unless pinned stops sit outside it.
+  const needFull = firsts.length > 0 || (input.open ? lasts.length > 1 : lasts.length > 0);
+  const full = !needFull ? opt
+    : input.open ? await computeRoute(fetchFn, key, input.origin, ordered.at(-1)!, ordered.slice(0, -1), false)
+    : await computeRoute(fetchFn, key, input.origin, end, ordered, false);
   const legs = (full.legs ?? []).map((l) => ({ durationSec: sec(l.duration), distanceM: l.distanceMeters ?? 0 }));
   return {
     order: ordered.map((s) => s.id),

@@ -9,22 +9,33 @@ export function AddStops({ count, max, onAdd }: Props) {
   const [rec, setRec] = useState<Dictation | null>(null);
   const [err, setErr] = useState('');
   const base = useRef('');
+  // Each recording gets a number. Late results from a recording that was already added are ignored,
+  // otherwise they refill the box and the same addresses get added twice.
+  const session = useRef(0);
   useEffect(() => () => rec?.stop(), [rec]);
 
   const toggle = () => {
     if (rec) { rec.stop(); setRec(null); setInterim(''); return; }
     setErr('');
     base.current = text ? text + ' ' : '';
+    const id = ++session.current;
+    const live = () => id === session.current;
     try {
       setRec(startDictation({
-        onText: (final, live) => { setText(base.current + final); setInterim(live); },
-        onError: (m) => { setErr(m); setRec(null); },
-        onEnd: () => { setRec(null); setInterim(''); },
+        onText: (final, interimText) => { if (live()) { setText(base.current + final); setInterim(interimText); } },
+        onError: (m) => { if (live()) { setErr(m); setRec(null); } },
+        onEnd: () => { if (live()) { setRec(null); setInterim(''); } },
       }));
     } catch (e) { setErr((e as Error).message); }
   };
 
-  const add = () => { if (rec) { rec.stop(); setRec(null); } if (text.trim()) { onAdd(text); setText(''); setInterim(''); } };
+  const add = () => {
+    const all = [text, interim].filter(Boolean).join(' ');
+    if (rec) { rec.stop(); setRec(null); }
+    session.current++;
+    if (all.trim()) onAdd(all);
+    setText(''); setInterim(''); base.current = '';
+  };
   const full = count >= max;
 
   return (

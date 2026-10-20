@@ -59,6 +59,24 @@ describe('optimizeRoute', () => {
     expect(out.legs).toHaveLength(5);
   });
 
+  it('open route: ends at the stop farthest from the start, with no return leg', async () => {
+    const g = fakeGoogle((body) => route(body.intermediates.length, body.intermediates.length > 1 ? [1, 0] : [0]));
+    const near = p('near', 0.001), mid = p('mid', 0.02), far = p('far', 0.2);
+    const out = await optimizeRoute(validate({ origin: { lat: 31.88, lng: 34.74 }, open: true, stops: [far, near, mid] }), 'k', g.fn);
+    expect(out.order.at(-1)).toBe('far');
+    expect(out.order).toHaveLength(3);
+    expect(g.calls).toHaveLength(1);
+    expect(g.calls[0].destination.location.latLng).toEqual({ latitude: far.lat, longitude: far.lng });
+    expect(out.legs).toHaveLength(3);
+  });
+
+  it('open route with one stop drives straight to it', async () => {
+    const g = fakeGoogle(() => route(0));
+    const out = await optimizeRoute(validate({ origin: TLV, open: true, stops: [p('a', 0)] }), 'k', g.fn);
+    expect(out.order).toEqual(['a']);
+    expect(g.calls[0].intermediates).toHaveLength(0);
+  });
+
   it('maps Google errors to clear Hebrew errors', async () => {
     const fn = (async () => new Response('denied', { status: 403 })) as unknown as typeof fetch;
     await expect(optimizeRoute(validate({ origin: TLV, stops: [p('a', 0)] }), 'k', fn)).rejects.toMatchObject({ status: 502 });

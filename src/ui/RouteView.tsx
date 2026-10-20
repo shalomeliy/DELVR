@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { fmtClock, fmtDuration, fmtKm, orderedStops } from '../domain/plan';
+import { endModeOf, fmtClock, fmtDuration, fmtKm, orderedStops } from '../domain/plan';
 import type { Plan, Stop } from '../domain/types';
 import { googleMapsUrl, wazeUrl } from '../services/navigation';
 import { MapView } from './MapView';
@@ -61,7 +61,7 @@ export function RouteView({ plan, onDelivery, onReoptimize, busy }: Props) {
           );
         })}
       </ol>
-      {endLeg && <p className="muted small">{plan.end ? 'לנקודת הסיום' : 'חזרה לנקודת היציאה'}: {fmtDuration(endLeg.durationSec)} · {fmtKm(endLeg.distanceM)}</p>}
+      {endLeg && <p className="muted small">{endModeOf(plan) === 'address' ? 'לנקודת הסיום' : 'חזרה לנקודת היציאה'}: {fmtDuration(endLeg.durationSec)} · {fmtKm(endLeg.distanceM)}</p>}
       <button type="button" className="ghost" onClick={onReoptimize} disabled={busy}>{busy ? 'מסדר...' : 'סדר מחדש את מה שנשאר'}</button>
     </section>
   );

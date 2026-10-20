@@ -25,6 +25,8 @@ export interface Stop {
   delivery: DeliveryStatus;
 }
 
+export type EndMode = 'open' | 'return' | 'address';
+
 export interface Place { input: string; address?: string; location?: LatLng }
 
 export interface Leg { durationSec: number; distanceM: number }
@@ -43,7 +45,9 @@ export interface Optimized {
 
 export interface Plan {
   start: Place;
-  /** null means the route ends back at the start. */
+  /** Where the route ends: at the last stop (default), back at the start, or at a chosen address. */
+  endMode?: EndMode;
+  /** The chosen end address, used when endMode is 'address'. */
   end: Place | null;
   stops: Stop[];
   optimized?: Optimized;

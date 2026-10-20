@@ -1,12 +1,13 @@
 import { useState } from 'react';
-import type { Place } from '../domain/types';
+import type { EndMode, Place } from '../domain/types';
 
 interface Props {
   start: Place;
   end: Place | null;
+  endMode: EndMode;
   onVerify: (which: 'start' | 'end', input: string) => Promise<void>;
   onHere: () => Promise<void>;
-  onEndMode: (roundTrip: boolean) => void;
+  onEndMode: (mode: EndMode) => void;
 }
 
 function PlaceInput({ label, place, placeholder, onVerify }: { label: string; place: Place; placeholder: string; onVerify: (input: string) => Promise<void> }) {
@@ -26,7 +27,9 @@ function PlaceInput({ label, place, placeholder, onVerify }: { label: string; pl
   );
 }
 
-export function StartPoint({ start, end, onVerify, onHere, onEndMode }: Props) {
+const END_MODES: [EndMode, string][] = [['open', 'בעצירה האחרונה'], ['return', 'חוזר להתחלה'], ['address', 'בכתובת אחרת']];
+
+export function StartPoint({ start, end, endMode, onVerify, onHere, onEndMode }: Props) {
   const [locating, setLocating] = useState(false);
   return (
     <section className="card">
@@ -35,11 +38,13 @@ export function StartPoint({ start, end, onVerify, onHere, onEndMode }: Props) {
       <button type="button" className="ghost" disabled={locating} onClick={async () => { setLocating(true); try { await onHere(); } finally { setLocating(false); } }}>
         {locating ? 'מאתר...' : 'המיקום שלי'}
       </button>
-      <div className="seg" role="radiogroup" aria-label="סיום המסלול">
-        <button type="button" role="radio" aria-checked={!end} className={!end ? 'on' : ''} onClick={() => onEndMode(true)}>חוזר לנקודת היציאה</button>
-        <button type="button" role="radio" aria-checked={!!end} className={end ? 'on' : ''} onClick={() => onEndMode(false)}>מסיים בכתובת אחרת</button>
+      <label id="end-label" style={{ marginTop: 12 }}>איפה המסלול נגמר</label>
+      <div className="seg" role="radiogroup" aria-labelledby="end-label">
+        {END_MODES.map(([mode, label]) => (
+          <button key={mode} type="button" role="radio" aria-checked={endMode === mode} className={endMode === mode ? 'on' : ''} onClick={() => onEndMode(mode)}>{label}</button>
+        ))}
       </div>
-      {end && <PlaceInput key={`e-${end.input}`} label="איפה מסיימים" place={end} placeholder="רחוב, מספר ועיר" onVerify={(t) => onVerify('end', t)} />}
+      {endMode === 'address' && end && <PlaceInput key={`e-${end.input}`} label="איפה מסיימים" place={end} placeholder="רחוב, מספר ועיר" onVerify={(t) => onVerify('end', t)} />}
     </section>
   );
 }
