@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Delvr ספייק: הקראת כתובות</title>
+<style>
+  :root { --bg:#fff; --fg:#1a1a1a; --muted:#666; --line:#ddd; --ok:#1b7f3b; --bad:#b3261e; --warn:#8a5a00; --accent:#1f5eff; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#141414; --fg:#eee; --muted:#aaa; --line:#333; --ok:#5cc97f; --bad:#ff8a80; --warn:#f0c060; --accent:#7ea2ff; } }
+  body { font-family: system-ui, Arial, sans-serif; background:var(--bg); color:var(--fg); margin:0; padding:16px; max-width:900px; margin-inline:auto; }
+  h1 { font-size:1.3rem; } label { display:block; margin:.6rem 0 .2rem; color:var(--muted); font-size:.9rem; }
+  input, textarea { width:100%; box-sizing:border-box; font:inherit; padding:.5rem; border:1px solid var(--line); border-radius:6px; background:transparent; color:inherit; }
+  textarea { min-height:110px; }
+  button { font:inherit; padding:.6rem 1rem; border-radius:6px; border:1px solid var(--line); background:transparent; color:inherit; cursor:pointer; margin:.5rem 0 0 .4rem; }
+  button.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+  button.rec { background:var(--bad); color:#fff; border-color:var(--bad); }
+  table { width:100%; border-collapse:collapse; margin-top:1rem; font-size:.9rem; }
+  th, td { border-bottom:1px solid var(--line); padding:.4rem; text-align:start; vertical-align:top; }
+  .ok { color:var(--ok); } .bad { color:var(--bad); } .warn { color:var(--warn); } .muted { color:var(--muted); }
+  #summary { margin-top:1rem; font-weight:600; }
+  td label { display:inline; margin:0; color:inherit; }
+  .row { display:flex; gap:.6rem; flex-wrap:wrap; } .row > div { flex:1 1 200px; }
+</style>
+</head>
+<body>
+<h1>ספייק Delvr: הקראה בעברית לכתובות</h1>
+<p class="muted">מקריאים רשימת כתובות ברצף. הדף מתמלל, מפצל לכתובות, ומאמת כל אחת מול Google. אחר כך מסמנים בכל שורה אם היא נכונה.</p>
+
+<div class="row">
+  <div><label for="start">כתובת יציאה (רחוב, מספר ועיר)</label><input id="start" placeholder="לדוגמה: דוכיפת 5 יבנה"><button id="here" type="button">המיקום שלי</button><div id="startInfo" class="muted"></div></div>
+  <div><label for="key">מפתח Google Maps (לאימות כתובות)</label><input id="key" placeholder="AIza..." autocomplete="off"></div>
+</div>
+
+<button id="mic" class="primary">התחל הקלטה</button>
+<span id="micStatus" class="muted"></span>
+
+<label for="transcript">תמלול (אפשר גם להדביק או לתקן ידנית)</label>
+<textarea id="transcript"></textarea>
+<button id="parse">פצל לכתובות</button>
+<button id="geocode">אמת מול Google</button>
+<button id="export">הורד תוצאות (JSON)</button>
+
+<table id="results" hidden>
+  <thead><tr><th>#</th><th>מה הבנו</th><th>הערות</th><th>Google החזיר</th><th>נכון?</th></tr></thead>
+  <tbody></tbody>
+</table>
+<div id="googleMsg" class="bad" style="margin-top:1rem;font-weight:600"></div>
+<div id="summary"></div>
+
+<script type="module">
+import { parseTranscript } from './parser.js';
+
+const $ = (id) => document.getElementById(id);
+let rows = [];
+try { $('key').value = localStorage.getItem('delvr_spike_key') || ''; $('start').value = localStorage.getItem('delvr_spike_start') || ''; } catch {}
+const save = () => { try { localStorage.setItem('delvr_spike_key', $('key').value.trim()); localStorage.setItem('delvr_spike_start', $('start').value.trim()); } catch {} };
+
+// Speech recognition: the browser's built-in recognizer (Chrome sends audio to Google).
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec = null, recording = false, finalText = '';
+if (!SR) { $('mic').disabled = true; $('micStatus').textContent = 'הדפדפן לא תומך בזיהוי דיבור. נסה Chrome.'; }
+$('mic').onclick = () => {
+  if (recording) { recording = false; rec.stop(); return; }
+  rec = new SR(); rec.lang = 'he-IL'; rec.continuous = true; rec.interimResults = true;
+  // Each recording starts clean so results never mix with the previous round.
+  finalText = ''; $('transcript').value = ''; rows = []; render();
+  rec.onresult = (e) => {
+    let interim = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const r = e.results[i];
+      if (r.isFinal) finalText += r[0].transcript + ' '; else interim += r[0].transcript;
+    }
+    $('transcript').value = (finalText + interim).trim();
+  };
+  rec.onerror = (e) => { $('micStatus').textContent = 'שגיאה: ' + e.error; };
+  // Chrome ends continuous recognition after silence; restart until the user stops.
+  rec.onend = () => { if (recording) rec.start(); else { $('mic').textContent = 'התחל הקלטה'; $('mic').className = 'primary'; $('micStatus').textContent = ''; } };
+  recording = true; rec.start();
+  $('mic').textContent = 'עצור הקלטה'; $('mic').className = 'rec'; $('micStatus').textContent = 'מקליט...';
+};
+
+function render() {
+  const tb = $('results').querySelector('tbody'); tb.innerHTML = '';
+  rows.forEach((r, i) => {
+    const flags = r.flags.map((f) => ({ unclear: 'לא הובן, צריך תיקון', no_number: 'אין מספר בית', no_city: 'אין עיר', city_defaulted: 'לא נאמרה עיר, נלקחה עיר היציאה' }[f])).join(', ');
+    let g = '<span class="muted">לא נבדק</span>';
+    if (r.google) g = r.google.error ? `<span class="bad">${r.google.error}</span>`
+      : `${r.google.formatted}<br><span class="${r.google.cityMatch ? 'ok' : 'bad'}">${r.google.cityMatch ? 'העיר תואמת' : 'עיר אחרת: ' + (r.google.locality || 'לא ידוע')}</span>${r.google.partial ? ' <span class="warn">התאמה חלקית</span>' : ''}`;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${i + 1}</td><td>${r.geocodeQuery}</td><td>${flags ? `<span class="warn">${flags}</span>` : ''}</td><td>${g}</td>
+      <td><label><input type="checkbox" data-i="${i}" ${r.correct ? 'checked' : ''}> כן</label></td>`;
+    tb.appendChild(tr);
+  });
+  tb.querySelectorAll('input[type=checkbox]').forEach((cb) => cb.onchange = () => { rows[+cb.dataset.i].correct = cb.checked; summary(); });
+  $('results').hidden = !rows.length; summary();
+}
+
+function summary() {
+  const expected = Number(prompt.lastExpected || 0);
+  const correct = rows.filter((r) => r.correct).length;
+  const base = Math.max(rows.length, expected);
+  if (!base) { $('summary').textContent = ''; return; }
+  const pct = Math.round((100 * correct) / base);
+  const verdict = pct >= 90 ? ['GO', 'ok'] : pct >= 70 ? ['CHANGE', 'warn'] : ['NO-GO', 'bad'];
+  $('summary').innerHTML = `${correct} נכונות מתוך ${base} (${pct}%) <span class="${verdict[1]}">${verdict[0]}</span>`;
+}
+
+// The start address's city fills in for any address said without a city.
+let here = null;
+function startCity() {
+  if (here?.city) return here.city;
+  const s = parseTranscript($('start').value)[0];
+  return s?.city && !s.flags.includes('no_city') ? s.city : null;
+}
+function showStart() {
+  const c = startCity();
+  $('startInfo').textContent = here ? `מיקום נוכחי${here.address ? ': ' + here.address : ''}${c ? '' : ' (העיר לא ידועה בלי מפתח Google)'}`
+    : $('start').value.trim() ? (c ? `עיר היציאה: ${c}` : 'לא זיהיתי עיר בכתובת היציאה') : '';
+}
+$('start').addEventListener('input', () => { here = null; showStart(); });
+$('here').onclick = () => {
+  if (!navigator.geolocation) { $('startInfo').textContent = 'הדפדפן לא נותן מיקום'; return; }
+  $('startInfo').textContent = 'מאתר מיקום...';
+  navigator.geolocation.getCurrentPosition(async (pos) => {
+    here = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+    $('start').value = `${here.lat.toFixed(5)}, ${here.lng.toFixed(5)}`;
+    const key = $('key').value.trim();
+    if (key) {
+      try {
+        await loadMaps(key);
+        const { results } = await new google.maps.Geocoder().geocode({ location: here });
+        here.address = results[0]?.formatted_address;
+        here.city = results[0]?.address_components.find((c) => c.types.includes('locality'))?.long_name;
+        if (here.address) $('start').value = here.address;
+      } catch {}
+    }
+    showStart();
+  }, (e) => { $('startInfo').textContent = 'לא הצלחתי לאתר מיקום: ' + e.message; });
+};
+showStart();
+
+$('parse').onclick = () => { save(); rows = parseTranscript($('transcript').value, { defaultCity: startCity() }); render(); };
+
+const norm = (s) => (s || '').replace(/[-־]/g, ' ').replace(/קרית/g, 'קריית').replace(/\s+/g, ' ').trim();
+// What to do about the common Google errors, in plain words.
+const GOOGLE_HELP = {
+  REQUEST_DENIED: 'Google דחה את הבקשה. כנראה Geocoding API לא מופעל בפרויקט, או שהוא לא מסומן בהגבלות של המפתח.',
+  OVER_QUERY_LIMIT: 'עברת את מכסת הבקשות של Google. נסה שוב בעוד דקה.',
+};
+window.gm_authFailure = () => { $('googleMsg').textContent = 'Google דחה את המפתח (בעיית מפתח, חיוב או הגבלות). שלח צילום מסך של חלון ה-Console (F12).'; };
+function loadMaps(key) {
+  if (window.google?.maps?.Geocoder) return Promise.resolve();
+  return new Promise((res, rej) => {
+    window.__mapsReady = res;
+    const s = document.createElement('script');
+    s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&language=he&region=IL&callback=__mapsReady`;
+    s.onerror = () => rej(new Error('טעינת Google Maps נכשלה'));
+    document.head.appendChild(s);
+  });
+}
+$('geocode').onclick = async () => {
+  save();
+  const key = $('key').value.trim();
+  if (!key) { $('googleMsg').textContent = 'קודם להדביק את מפתח Google בתיבה "מפתח Google Maps" למעלה.'; $('key').focus(); return; }
+  $('googleMsg').textContent = '';
+  if (!rows.length) $('parse').onclick();
+  try { await loadMaps(key); } catch (e) { $('googleMsg').textContent = e.message; return; }
+  const gc = new google.maps.Geocoder();
+  for (const r of rows) {
+    try {
+      const { results } = await gc.geocode({ address: r.geocodeQuery, componentRestrictions: { country: 'IL' } });
+      const top = results[0];
+      const comp = (t) => top.address_components.find((c) => c.types.includes(t))?.long_name;
+      const locality = comp('locality');
+      r.google = {
+        formatted: top.formatted_address, locality, partial: !!top.partial_match,
+        hasStreetNumber: !!comp('street_number'), location: top.geometry.location.toJSON(),
+        cityMatch: !!r.city && !!locality && (norm(locality).includes(norm(r.city).split(' ')[0]) || norm(r.city).includes(norm(locality))),
+      };
+      if (r.correct === undefined) r.correct = r.google.cityMatch && r.google.hasStreetNumber && !r.google.partial;
+    } catch (e) {
+      const code = e?.code || e?.message || String(e);
+      r.google = { error: code === 'ZERO_RESULTS' ? 'לא נמצא' : `שגיאה מ-Google: ${code}` }; r.correct = false;
+      if (code !== 'ZERO_RESULTS') $('googleMsg').textContent = GOOGLE_HELP[code] || `Google החזיר שגיאה: ${code}`;
+    }
+    render();
+  }
+};
+
+$('export').onclick = () => {
+  const blob = new Blob([JSON.stringify({ when: new Date().toISOString(), start: $('start').value, startCity: startCity(), transcript: $('transcript').value, rows }, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `delvr-spike-${Date.now()}.json`; a.click();
+};
+
+// How many addresses were actually read out, so missed ones count as failures.
+const prompt = { lastExpected: 0 };
+$('summary').insertAdjacentHTML('beforebegin', '<label for="expected">כמה כתובות הקראת בפועל?</label><input id="expected" type="number" min="0" value="10" style="max-width:120px">');
+$('expected').oninput = () => { prompt.lastExpected = $('expected').value; summary(); };
+prompt.lastExpected = $('expected').value;
+</script>
+</body>
+</html>
