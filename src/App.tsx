@@ -20,6 +20,7 @@ export default function App() {
   const setError = useCallback((msg: string) => { if (msg) logError('shown_error', msg); setErrorState(msg); }, []);
   const [notice, setNotice] = useState('');
   const [optimizing, setOptimizing] = useState(false);
+  const [sortError, setSortError] = useState('');
   const planRef = useRef<Plan | null>(null);
 
   const setPlan = useCallback((fn: (p: Plan) => Plan) => {
@@ -113,13 +114,16 @@ export default function App() {
   };
 
   const optimize = async () => {
-    setError(''); setOptimizing(true);
+    setError(''); setSortError(''); setOptimizing(true);
     try {
       const current = planRef.current ?? plan;
       const optimized = await optimizePlan(current);
       setPlan((p) => ({ ...p, optimized }));
       window.scrollTo({ top: 0, behavior: 'smooth' });
-    } catch (e) { setError((e as Error).message); }
+    } catch (e) {
+      // Shown next to the button too: the banner at the top is off-screen on a phone.
+      setError((e as Error).message); setSortError((e as Error).message);
+    }
     finally { setOptimizing(false); }
   };
 
@@ -174,6 +178,7 @@ export default function App() {
           <button type="button" className="primary big" disabled={!gate.ok || optimizing} onClick={optimize}>
             {optimizing ? 'מסדר את המסלול...' : 'סדר מסלול'}
           </button>
+          {sortError && <div className="bad small center" role="alert">הסידור נכשל: {sortError}</div>}
           {!gate.ok && <div className="muted small center">{gate.why}</div>}
         </div>
       )}

@@ -15,11 +15,17 @@ export async function optimizePlan(plan: Plan, signal?: AbortSignal): Promise<Op
       stops: stops.map((s) => ({ id: s.id, ...s.location!, order: s.order })),
     }),
   });
-  const data = await res.json().catch(() => ({ error: 'תשובה לא תקינה מהשרת' }));
+  const raw = await res.text();
+  let data: Record<string, unknown> & { error?: string };
+  try { data = JSON.parse(raw); } catch { data = { error: `תשובה לא תקינה מהשרת (${res.status})` }; logError('optimize_bad_response', { status: res.status, body: raw.slice(0, 300) }); }
+  if (res.ok && !Array.isArray(data.order)) {
+    logError('optimize_bad_response', { status: res.status, body: raw.slice(0, 300) });
+    throw new Error('השרת לא החזיר מסלול. ייתכן שפונקציית הסידור לא עלתה ל-Vercel');
+  }
   if (!res.ok) {
     logError('optimize_failed', { status: res.status, error: data.error, ms: Date.now() - started });
     throw new Error(data.error ?? `שגיאת שרת ${res.status}`);
   }
   logInfo('optimize_ok', { ms: Date.now() - started, totalDurationSec: data.totalDurationSec, totalDistanceM: data.totalDistanceM, order: data.order });
-  return { ...data, at: Date.now() };
+  return { ...(data as unknown as Omit<Optimized, 'at'>), at: Date.now() };
 }
