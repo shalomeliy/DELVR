@@ -44,7 +44,7 @@ export function RouteView({ plan, onDelivery, onReoptimize, busy }: Props) {
                 </div>
                 {s.location && s.delivery === 'todo' && (
                   <div className="actions">
-                    <a className="btn" href={wazeUrl(s.location)} target="_blank" rel="noreferrer">Waze</a>
+                    <a className="btn" href={wazeUrl(s.location, s.address)} rel="noreferrer">Waze</a>
                     <a className="btn ghost" href={googleMapsUrl(s.location)} target="_blank" rel="noreferrer">Google</a>
                     <button type="button" className="ok-btn" onClick={() => onDelivery(s.id, 'delivered')}>נמסר</button>
                     <button type="button" className="bad-btn" onClick={() => onDelivery(s.id, 'failed')}>נכשל</button>
