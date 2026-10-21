@@ -28,3 +28,6 @@ dist-ssr
 !.env.example
 google-key.txt
 .vercel
+
+# Spike output (Google results, kept local)
+spikes/routes-address/result.*
