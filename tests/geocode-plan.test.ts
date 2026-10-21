@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { judge, sameCity } from '../src/services/geocode';
 import type { Plan } from '../src/domain/types';
-import { canOptimize, emptyPlan, endModeOf, findDuplicate, orderedStops, startCity, stopsFromText, addStops } from '../src/domain/plan';
+import { canOptimize, emptyPlan, endModeOf, findDuplicate, orderedStops, routeOrigin, startCity, stopsFromText, addStops } from '../src/domain/plan';
+import { isFresh } from '../src/store/db';
 
 const result = (over: Partial<{ number: boolean; city: string; partial: boolean }> = {}) => ({
   formatted_address: 'הרצל 3, רחובות',
@@ -69,5 +70,23 @@ describe('plan', () => {
     expect(endModeOf(emptyPlan())).toBe('return');
     expect(endModeOf({ start: { input: '' }, end: { input: 'רחובות' }, stops: [] })).toBe('return');
     expect(endModeOf({ start: { input: '' }, end: { input: 'רחובות', location: { lat: 31.89, lng: 34.81 } }, stops: [] })).toBe('address');
+  });
+  it('a re-sort starts at the stop handled last, not at the start point', () => {
+    const start = { lat: 31.80, lng: 34.70 };
+    const base = addStops({ ...emptyPlan(), start: { input: 'x', location: start } }, stopsFromText('הרצל 1 יבנה, הרצל 2 יבנה, הרצל 3 יבנה', null)).plan;
+    expect(routeOrigin(base)).toEqual(start);
+    const at = (i: number) => ({ lat: 31.8 + i / 100, lng: 34.7 });
+    const plan = { ...base, stops: base.stops.map((s, i) => ({ ...s, location: at(i), delivery: i < 2 ? 'delivered' as const : 'todo' as const, handledAt: i === 0 ? 2000 : i === 1 ? 1000 : undefined })) };
+    expect(routeOrigin(plan)).toEqual(at(0));
+  });
+});
+
+describe('address memory', () => {
+  it('keeps a confirmed address for 30 days, and treats undated old entries as expired', () => {
+    const r = { address: 'הרצל 3, רחובות', location: { lat: 31.89, lng: 34.81 } };
+    const day = 24 * 3600 * 1000;
+    expect(isFresh({ ...r, at: 0 }, 29 * day)).toBe(true);
+    expect(isFresh({ ...r, at: 0 }, 31 * day)).toBe(false);
+    expect(isFresh(r)).toBe(false);
   });
 });

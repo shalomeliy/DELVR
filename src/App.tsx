@@ -7,7 +7,7 @@ import { geocode, reverseGeocode } from './services/geocode';
 import { buildReport, logError, logInfo, shareReport } from './services/log';
 import { hasMapsKey } from './services/maps';
 import { optimizePlan } from './services/optimize';
-import { loadPlan, recall, remember, savePlan } from './store/db';
+import { isFresh, loadPlan, recall, remember, savePlan } from './store/db';
 import { AddStops } from './ui/AddStops';
 import { FixList } from './ui/FixList';
 import { RouteView } from './ui/RouteView';
@@ -34,16 +34,21 @@ export default function App() {
 
   useEffect(() => { loadPlan().then((p) => { const v = p ?? emptyPlan(); planRef.current = v; setPlanState(v); }); }, []);
 
-  // Verify one stop: the courier's own corrections first (free), then Google.
+  // Verify one stop: addresses this phone already knows first (free), then Google.
   const verifyStop = useCallback(async (stop: Stop) => {
     const mem = await recall(stop.input);
-    if (mem) { setPlan((p) => updateStop(p, stop.id, { verify: 'ok', address: mem.address, location: mem.location, fixReason: undefined })); return; }
+    if (mem && isFresh(mem)) { setPlan((p) => updateStop(p, stop.id, { verify: 'ok', address: mem.address, location: mem.location, fixReason: undefined })); return; }
     try {
-      const r = await geocode(stop.input, stop.city);
+      // An expired entry still knows which address the courier meant, so Google is asked about that one.
+      const r = await geocode(mem?.address ?? stop.input, stop.city);
       setPlan((p) => updateStop(p, stop.id, r.ok
         ? { verify: 'ok', address: r.address, location: r.location, fixReason: undefined }
         : { verify: 'needs_fix', fixReason: r.reason, address: r.address, location: r.location }));
-      if (r.ok && stop.spoken !== stop.input) remember(stop.spoken, { address: r.address, location: r.location });
+      // Every confirmed address is kept, so a street the courier delivers to again costs no Google call.
+      if (r.ok) {
+        remember(stop.input, { address: r.address, location: r.location });
+        if (stop.spoken !== stop.input) remember(stop.spoken, { address: r.address, location: r.location });
+      }
     } catch (e) {
       setPlan((p) => updateStop(p, stop.id, { verify: 'needs_fix', fixReason: (e as Error).message }));
       setError((e as Error).message);
@@ -74,9 +79,12 @@ export default function App() {
   const verifyPlace = async (which: 'start' | 'end', input: string) => {
     setError('');
     try {
+      // The start address repeats every day, so it is looked up in the phone's memory first.
+      const mem = await recall(input);
       const city = parseTranscript(input)[0]?.city ?? null;
-      const r = await geocode(input, city);
+      const r = mem && isFresh(mem) ? { ok: true, ...mem } : await geocode(input, city);
       if (!r.location) { setError(`לא מצאתי את "${input}". נסה לכתוב רחוב, מספר ועיר`); return; }
+      if (r.ok && r.address && !(mem && isFresh(mem))) remember(input, { address: r.address, location: r.location });
       const place: Place = { input, address: r.address, location: r.location };
       logInfo('place_set', { which, input, address: r.address });
       setPlan((p) => (which === 'start' ? { ...p, start: place, optimized: undefined } : { ...p, end: place, optimized: undefined }));
@@ -178,7 +186,7 @@ export default function App() {
 
       {plan.optimized ? (
         <RouteView plan={plan} busy={optimizing} onReoptimize={optimize}
-          onDelivery={(id, d) => { logInfo('delivery', { id, status: d }); setPlan((p) => updateStop(p, id, { delivery: d }, true)); }} />
+          onDelivery={(id, d) => { logInfo('delivery', { id, status: d }); setPlan((p) => updateStop(p, id, { delivery: d, handledAt: d === 'todo' ? undefined : Date.now() }, true)); }} />
       ) : null}
 
       {!plan.optimized && <StartPoint start={plan.start} end={plan.end} onVerify={verifyPlace} onHere={useHere}

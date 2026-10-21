@@ -6,21 +6,28 @@ interface Props { start?: LatLng; points: LatLng[]; polyline?: string }
 
 export function MapView({ start, points, polyline }: Props) {
   const el = useRef<HTMLDivElement>(null);
+  // Google bills every new Map as a map load, so the screen keeps one map and only redraws its overlays.
+  const map = useRef<google.maps.Map | null>(null);
+  // The props are fresh arrays on every render (a delivery tap, a notice). Compare by value so those
+  // renders do not redraw the map or reset the courier's zoom.
+  const drawn = JSON.stringify([start, points, polyline]);
   useEffect(() => {
+    const [s, pts, line] = JSON.parse(drawn) as [LatLng | undefined, LatLng[], string | undefined];
     let cancelled = false;
     const overlays: { setMap(m: google.maps.Map | null): void }[] = [];
     loadMaps().then((maps) => {
       if (cancelled || !el.current) return;
-      const map = new maps.Map(el.current, { disableDefaultUI: true, zoomControl: true, gestureHandling: 'greedy' });
+      map.current ??= new maps.Map(el.current, { disableDefaultUI: true, zoomControl: true, gestureHandling: 'greedy' });
+      const m = map.current;
       const bounds = new maps.LatLngBounds();
-      if (start) { overlays.push(new maps.Marker({ map, position: start, label: { text: 'S', color: '#fff' }, title: 'יציאה' })); bounds.extend(start); }
-      points.forEach((p, i) => { overlays.push(new maps.Marker({ map, position: p, label: { text: String(i + 1), color: '#fff' } })); bounds.extend(p); });
-      if (polyline && maps.geometry) {
-        overlays.push(new maps.Polyline({ map, path: maps.geometry.encoding.decodePath(polyline), strokeColor: '#2563eb', strokeWeight: 4 }));
+      if (s) { overlays.push(new maps.Marker({ map: m, position: s, label: { text: 'S', color: '#fff' }, title: 'יציאה' })); bounds.extend(s); }
+      pts.forEach((p, i) => { overlays.push(new maps.Marker({ map: m, position: p, label: { text: String(i + 1), color: '#fff' } })); bounds.extend(p); });
+      if (line && maps.geometry) {
+        overlays.push(new maps.Polyline({ map: m, path: maps.geometry.encoding.decodePath(line), strokeColor: '#2563eb', strokeWeight: 4 }));
       }
-      if (!bounds.isEmpty()) map.fitBounds(bounds, 32);
+      if (!bounds.isEmpty()) m.fitBounds(bounds, 32);
     }).catch(() => { /* the list still works without the map */ });
     return () => { cancelled = true; overlays.forEach((o) => o.setMap(null)); };
-  }, [start, points, polyline]);
+  }, [drawn]);
   return <div ref={el} className="map" aria-label="מפת המסלול" />;
 }

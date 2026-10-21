@@ -4,7 +4,12 @@ import type { LatLng, Plan } from '../domain/types';
 const DB = 'delvr', VERSION = 1;
 const PLAN = 'plan', MEMORY = 'addressMemory';
 
-export interface Remembered { address: string; location: LatLng }
+/** at: when Google last confirmed it. Google's terms allow keeping coordinates for up to 30 days. */
+export interface Remembered { address: string; location: LatLng; at?: number }
+
+const KEEP_MS = 30 * 24 * 3600 * 1000;
+/** Entries saved before dates were added have no `at`, so they count as expired and are refreshed once. */
+export const isFresh = (r: Remembered, now = Date.now()) => now - (r.at ?? 0) < KEEP_MS;
 
 let dbp: Promise<IDBDatabase> | null = null;
 function open(): Promise<IDBDatabase> {
@@ -32,4 +37,4 @@ export const memoryKey = (input: string) => input.replace(/[,.\-־'"׳״]/g, ' '
 export const loadPlan = () => tx<Plan | undefined>(PLAN, 'readonly', (s) => s.get('current')).catch(() => undefined);
 export const savePlan = (plan: Plan) => tx(PLAN, 'readwrite', (s) => s.put(plan, 'current')).catch(() => undefined);
 export const recall = (input: string) => tx<Remembered | undefined>(MEMORY, 'readonly', (s) => s.get(memoryKey(input))).catch(() => undefined);
-export const remember = (input: string, r: Remembered) => tx(MEMORY, 'readwrite', (s) => s.put(r, memoryKey(input))).catch(() => undefined);
+export const remember = (input: string, r: Remembered) => tx(MEMORY, 'readwrite', (s) => s.put({ address: r.address, location: r.location, at: Date.now() }, memoryKey(input))).catch(() => undefined);

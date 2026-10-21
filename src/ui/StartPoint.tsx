@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { Place } from '../domain/types';
 
 interface Props {
@@ -13,13 +13,15 @@ function PlaceInput({ label, place, placeholder, onVerify, onClear }: { label: s
   const [text, setText] = useState(place.input);
   const [busy, setBusy] = useState(false);
   const verified = !!place.location && text.trim() === place.input.trim();
-  const go = async () => { if (!text.trim()) return; setBusy(true); try { await onVerify(text.trim()); } finally { setBusy(false); } };
+  // Leaving the field checks the address once. A text that already failed is not sent to Google again on blur.
+  const tried = useRef('');
+  const go = async () => { if (!text.trim()) return; tried.current = text.trim(); setBusy(true); try { await onVerify(text.trim()); } finally { setBusy(false); } };
   return (
     <div className="field">
       <label>{label}</label>
       <div className="inline">
         <input value={text} placeholder={placeholder} onChange={(e) => { setText(e.target.value); if (!e.target.value.trim() && place.location) onClear?.(); }}
-          onKeyDown={(e) => e.key === 'Enter' && go()} onBlur={() => !verified && text.trim() && go()} />
+          onKeyDown={(e) => e.key === 'Enter' && go()} onBlur={() => !verified && text.trim() && text.trim() !== tried.current && go()} />
         {!verified && text.trim() && <button type="button" onClick={go} disabled={busy}>{busy ? 'בודק...' : 'אמת'}</button>}
         {onClear && verified && <button type="button" className="icon" aria-label="מחק כתובת סיום" onClick={() => { setText(''); onClear(); }}>✕</button>}
       </div>

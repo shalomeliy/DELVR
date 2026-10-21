@@ -1,4 +1,3 @@
-import { useMemo } from 'react';
 import { endModeOf, fmtClock, fmtDuration, fmtKm, orderedStops } from '../domain/plan';
 import type { Plan, Stop } from '../domain/types';
 import { googleMapsUrl, wazeUrl } from '../services/navigation';
@@ -15,7 +14,7 @@ export function RouteView({ plan, onDelivery, onReoptimize, busy }: Props) {
   const opt = plan.optimized!;
   const stops = orderedStops(plan);
   const addedAt = new Map(plan.stops.map((s, i) => [s.id, i + 1]));
-  const points = useMemo(() => stops.filter((s) => s.location).map((s) => s.location!), [stops]);
+  const points = stops.filter((s) => s.location).map((s) => s.location!);
   const done = plan.stops.filter((s) => s.delivery !== 'todo').length;
   const routed = new Set(opt.order);
   const endLeg = opt.legs[opt.order.length];

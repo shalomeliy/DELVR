@@ -23,6 +23,8 @@ export interface Stop {
   order: StopOrder;
   note?: string;
   delivery: DeliveryStatus;
+  /** When the courier marked it delivered or failed. The latest one is where a re-sort starts from. */
+  handledAt?: number;
 }
 
 export type EndMode = 'open' | 'return' | 'address';

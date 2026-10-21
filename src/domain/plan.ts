@@ -1,6 +1,6 @@
 // Pure plan operations, kept out of React so they are easy to test.
 import { parseTranscript } from './parser.js';
-import type { EndMode, Plan, Stop } from './types';
+import type { EndMode, LatLng, Plan, Stop } from './types';
 import { MAX_STOPS } from './types';
 
 export const emptyPlan = (): Plan => ({ start: { input: '' }, end: null, stops: [] });
@@ -68,6 +68,17 @@ export function canOptimize(plan: Plan): { ok: boolean; why?: string } {
   const fix = todo.filter((s) => s.verify === 'needs_fix').length;
   if (fix) return { ok: false, why: `${fix} כתובות מחכות לתיקון` };
   return { ok: true };
+}
+
+/**
+ * Where a sort starts: at the stop the courier handled last, since that is where they are standing.
+ * Before any delivery it is the start point.
+ */
+export function routeOrigin(plan: Plan): LatLng | undefined {
+  const last = plan.stops
+    .filter((s) => s.delivery !== 'todo' && s.handledAt && s.location)
+    .sort((a, b) => b.handledAt! - a.handledAt!)[0];
+  return last?.location ?? plan.start.location;
 }
 
 /** Stops in driving order when the plan is optimized, otherwise in the order added. */
