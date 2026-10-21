@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { endModeOf, fmtClock, fmtDuration, fmtKm, orderedStops } from '../domain/plan';
 import type { Plan, Stop } from '../domain/types';
 import { googleMapsUrl, wazeUrl } from '../services/navigation';
@@ -18,6 +19,8 @@ export function RouteView({ plan, onDelivery, onReoptimize, busy }: Props) {
   const done = plan.stops.filter((s) => s.delivery !== 'todo').length;
   const routed = new Set(opt.order);
   const endLeg = opt.legs[opt.order.length];
+  // Hidden until asked for: every map Google draws is a billed map load, and the list plus Waze is enough to drive.
+  const [showMap, setShowMap] = useState(false);
 
   return (
     <section className="card">
@@ -28,7 +31,8 @@ export function RouteView({ plan, onDelivery, onReoptimize, busy }: Props) {
         <div><b>{fmtClock(opt.at + opt.totalDurationSec * 1000)}</b><span>סיום משוער</span></div>
       </div>
       <p className="muted small">זמני נסיעה לפי Google, כולל תנועה. לא כולל זמן עצירה בכל כתובת. {done ? `${done} מתוך ${plan.stops.length} טופלו.` : ''}</p>
-      <MapView start={plan.start.location} points={points} polyline={opt.polyline} />
+      <button type="button" className="ghost" onClick={() => setShowMap((v) => !v)}>{showMap ? 'הסתר מפה' : 'הצג מפה'}</button>
+      {showMap && <MapView start={plan.start.location} points={points} polyline={opt.polyline} />}
       <ol className="route">
         {stops.map((s, i) => {
           const leg = routed.has(s.id) ? opt.legs[opt.order.indexOf(s.id)] : undefined;
