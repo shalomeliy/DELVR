@@ -1,34 +1,50 @@
-# Delvr
+# 📦 DELVR
 
-אפליקציית ווב לשליחים: מקריאים או מקלידים כתובות בעברית, מאמתים אותן מול Google, ומקבלים את סדר הנסיעה הכי מהיר לפי זמני הנסיעה של Google (כולל תנועה), עם ניווט ב-Waze.
+<p align="center">
+  <img src="https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript" />
+  <img src="https://img.shields.io/badge/Vite-646CFF?style=for-the-badge&logo=vite&logoColor=white" alt="Vite" />
+  <img src="https://img.shields.io/badge/Google_Maps-4285F4?style=for-the-badge&logo=google-maps&logoColor=white" alt="Google Maps API" />
+  <img src="https://img.shields.io/badge/Vercel-000000?style=for-the-badge&logo=vercel&logoColor=white" alt="Vercel" />
+</p>
 
-מדריך התקנה מלא עם מפתח Google משלך ותקרות שימוש: [docs/SETUP.md](docs/SETUP.md). הסבר על האפליקציה עם צילומי מסך: [docs/ABOUT.md](docs/ABOUT.md).
+אפליקציית ווב מתקדמת המותאמת לשליחים: מאפשרת להקריא או להקליד כתובות בעברית, מאמתת אותן מול Google, מחשבת את סדר הנסיעה האופטימלי והמהיר ביותר לפי זמני אמת של Google (כולל עומסי תנועה), ומספקת ניווט ישיר ומהיר ב-Waze.
 
-## להריץ במחשב (Windows)
-1. פעם ראשונה בלבד: לחיצה כפולה על `set-google-key.bat`, מדביקים את מפתח Google ולוחצים Enter. המפתח נשמר רק בקובץ `.env.local` בתיקייה הזו.
-2. לחיצה כפולה על `start-delvr.bat`. בפעם הראשונה הוא מתקין חבילות (כמה דקות), ואז נפתח Chrome בכתובת http://localhost:5173.
+📖 **תיעוד נוסף:**
+* [מדריך התקנה מלא (כולל הגדרת מפתח Google ותקרות שימוש)](docs/SETUP.md)
+* [סקירת האפליקציה וצילומי מסך](docs/ABOUT.md)
 
-ב-Google Cloud צריכים להיות מופעלים: Maps JavaScript API, Geocoding API, Routes API.
+---
 
-## פקודות
+## 🚀 הרצה מקומית (Windows)
+
+תהליך מהיר המותאם לעבודה שוטפת:
+
+1. **פעם ראשונה בלבד:** לחיצה כפולה על הקובץ `set-google-key.bat`, הדבקת מפתח ה-Google API ולחיצת Enter (המפתח נשמר מקומית בקובץ `.env.local`).
+2. **הפעלת המערכת:** לחיצה כפולה על `start-delvr.bat`. בפעם הראשונה יותקנו החבילות הנדרשות אוטומטית, ולאחר מכן ייפתח דפדפן Chrome בכתובת:  
+   👉 `http://localhost:5173`
+
+> 🔑 **דרישות ב-Google Cloud:** יש לוודא שמופעלים ה-APIs הבאים:  
+> `Maps JavaScript API` | `Geocoding API` | `Routes API`
+
+---
+
+## 🛠️ פקודות מערכת (CLI)
+
 | פקודה | מה היא עושה |
-|---|---|
-| `npm run dev` | מריץ מקומית, כולל פונקציית הסידור (`/api/optimize`) |
-| `npm test` | בדיקות: פרסר, כלל התיקון, לוגיקת המסלול, פונקציית השרת |
-| `npm run build` | בדיקת טיפוסים ובנייה לייצור |
+| :--- | :--- |
+| `npm run dev` | הרצת האפליקציה מקומית (כולל פונקציית סידור המסלול `/api/optimize`) |
+| `npm test` | הרצת בדיקות (פרסר, כלל התיקון, לוגיקת מסלול ופונקציות השרת) |
+| `npm run build` | בדיקת טיפוסים ובניית קבצים לסביבת ייצור (Production) |
 
-## מבנה
-- `src/domain` פרסר ההקראה (מהספייק), מודל הנתונים ופעולות על המסלול
-- `src/services` Google Maps וגיאוקודינג, הקראה, קריאה לשרת, קישורי Waze
-- `src/store` שמירה במכשיר (IndexedDB): המסלול הנוכחי וכתובות שתוקנו
-- `src/ui` המסכים
-- `api/optimize.ts` פונקציית שרת (Vercel) שקוראת ל-Routes API. הלוגיקה ב-`api/_lib/optimize.ts`
+---
 
-## משתני סביבה
-| משתנה | איפה | למה |
-|---|---|---|
-| `VITE_GOOGLE_MAPS_KEY` | דפדפן | גיאוקודינג ומפה. בייצור: מפתח נעול לדומיין של האתר |
-| `GOOGLE_ROUTES_KEY` | שרת בלבד | סידור המסלול. לא נחשף לדפדפן |
+## 📂 מבנה הפרויקט
 
-## מגבלות v1
-עד 25 עצירות. אין חשבונות משתמש. מסלול מסתיים בנקודת היציאה או בכתובת שבוחרים. תקרת השרת (150 ביום, 10 בדקה לכתובת IP) נשמרת בזיכרון של הפונקציה, ולכן היא הגנה חלקית; המכסה של Google היא הגבול האמיתי.
+```text
+├── src/
+│   ├── domain/       # פרסר הקראה (מהספייק), מודל הנתונים ולוגיקת המסלול
+│   ├── services/     # אינטגרציה עם Google Maps, גיאוקודינג, הקראה, שרת ו-Waze
+│   ├── store/        # שמירת נתונים במכשיר (IndexedDB): מסלול נוכחי וכתובות שתוקנו
+│   └── ui/           # מסכי הממשק של האפליקציה
+└── api/
+    └── optimize.ts   # פונקציית שרת (Vercel) הקוראת ל-Routes API (לוגיקה ב-_lib/optimize.ts)
