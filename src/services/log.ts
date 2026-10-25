@@ -71,11 +71,10 @@ export async function buildReport(extra: Record<string, unknown>): Promise<strin
 }
 
 /** Opens the phone's share sheet (WhatsApp etc.). Falls back to download, then clipboard. Returns what happened. */
-export async function shareReport(report: string): Promise<'shared' | 'downloaded' | 'copied' | 'cancelled'> {
-  const name = `delvr-log-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')}.txt`;
-  const file = new File([report], name, { type: 'text/plain' });
+export async function shareFile(content: string, name: string, type: string, title: string): Promise<'shared' | 'downloaded' | 'copied' | 'cancelled'> {
+  const file = new File([content], name, { type });
   if (navigator.canShare?.({ files: [file] })) {
-    try { await navigator.share({ files: [file], title: 'לוגים של Delvr', text: 'לוגים של Delvr' }); return 'shared'; }
+    try { await navigator.share({ files: [file], title, text: title }); return 'shared'; }
     catch (e) { if ((e as Error).name === 'AbortError') return 'cancelled'; }
   }
   try {
@@ -84,7 +83,12 @@ export async function shareReport(report: string): Promise<'shared' | 'downloade
     setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
     return 'downloaded';
   } catch {
-    await navigator.clipboard.writeText(report);
+    await navigator.clipboard.writeText(content);
     return 'copied';
   }
+}
+
+export function shareReport(report: string) {
+  const name = `delvr-log-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')}.txt`;
+  return shareFile(report, name, 'text/plain', 'לוגים של Delvr');
 }

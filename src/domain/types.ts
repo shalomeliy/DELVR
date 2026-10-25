@@ -4,7 +4,8 @@ export interface LatLng { lat: number; lng: number }
 
 export type StopOrder = 'first' | 'auto' | 'last';
 export type VerifyStatus = 'pending' | 'ok' | 'needs_fix';
-export type DeliveryStatus = 'todo' | 'delivered' | 'failed';
+/** pasted: the courier left the item or a notice stuck on the door. Counted apart from delivered. */
+export type DeliveryStatus = 'todo' | 'delivered' | 'pasted' | 'failed';
 
 export interface Stop {
   id: string;
@@ -23,7 +24,9 @@ export interface Stop {
   order: StopOrder;
   note?: string;
   delivery: DeliveryStatus;
-  /** When the courier marked it delivered or failed. The latest one is where a re-sort starts from. */
+  /** Why the delivery failed, typed or dictated by the courier. */
+  failReason?: string;
+  /** When the courier marked it delivered, pasted or failed. The latest one is where a re-sort starts from. */
   handledAt?: number;
 }
 

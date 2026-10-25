@@ -59,11 +59,31 @@ ol.stops li:first-child, ol.route li:first-child { border-top: none; }
 ol.route li { display: flex; gap: 10px; padding: 12px 0; border-top: 1px solid var(--line); }
 ol.route li.delivered, ol.route li.failed { opacity: .6; }
 .num { width: 32px; height: 32px; border-radius: 50%; background: var(--accent); color: var(--accent-text); display: flex; align-items: center; justify-content: center; font-weight: 700; flex-shrink: 0; }
-.actions { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 8px; }
+.actions { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; margin-top: 8px; }
+.actions > * { grid-column: span 2; }
+.actions > .nav { grid-column: span 3; }
 .actions .btn, .actions button { padding: 8px 4px; font-size: .85rem; }
 .actions .btn:first-child { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
 .ok-btn { background: var(--ok-bg); border-color: transparent; }
+.paste-btn { background: var(--warn-bg); border-color: transparent; }
 .bad-btn { background: var(--bad-bg); border-color: transparent; }
+ol.route li.pasted { opacity: .6; }
+.fail-box { margin-top: 8px; padding: 10px; border-radius: 10px; background: var(--bad-bg); }
+.fail-box textarea { background: var(--card); }
+.small-mic { min-height: 48px; font-size: 1rem; }
+.fail-actions { display: grid; grid-template-columns: 2fr 1fr; gap: 6px; margin-top: 8px; }
+.cal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.cal-head h2 { margin: 0; }
+.cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; text-align: center; }
+.cal .wd { font-size: .75rem; color: var(--muted); padding-bottom: 2px; }
+.cal button { min-height: 48px; padding: 4px 0; flex-direction: column; font-size: .9rem; border-radius: 8px; }
+.cal button.has { background: var(--ok-bg); border-color: transparent; }
+.cal button.today { border-color: var(--accent); }
+.cal button.sel { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+.cal button span { font-size: .7rem; line-height: 1; }
+.totals.four { grid-template-columns: repeat(4, 1fr); }
+.export { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+.export .primary { margin-top: 0; }
 .totals { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; text-align: center; margin-bottom: 6px; }
 .totals div { background: var(--bg); border-radius: 10px; padding: 10px 4px; }
 .totals b { display: block; font-size: 1.2rem; }

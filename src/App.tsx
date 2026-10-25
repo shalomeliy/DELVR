@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { addStops, canOptimize, emptyPlan, endModeOf, findDuplicate, removeStop, startCity, stopsFromText, updateStop } from './domain/plan';
+import { dayKey, withEntry, withoutEntry } from './domain/history';
 import { parseTranscript } from './domain/parser.js';
 import type { Place, Plan, Stop } from './domain/types';
 import { MAX_STOPS } from './domain/types';
@@ -7,8 +8,9 @@ import { geocode, reverseGeocode } from './services/geocode';
 import { buildReport, logError, logInfo, shareReport } from './services/log';
 import { hasMapsKey } from './services/maps';
 import { optimizePlan } from './services/optimize';
-import { isFresh, loadPlan, recall, remember, savePlan } from './store/db';
+import { isFresh, loadPlan, recall, remember, savePlan, updateDay } from './store/db';
 import { AddStops } from './ui/AddStops';
+import { Calendar } from './ui/Calendar';
 import { FixList } from './ui/FixList';
 import { RouteView } from './ui/RouteView';
 import { StartPoint } from './ui/StartPoint';
@@ -22,6 +24,7 @@ export default function App() {
   const [optimizing, setOptimizing] = useState(false);
   const [sortError, setSortError] = useState('');
   const planRef = useRef<Plan | null>(null);
+  const [showCalendar, setShowCalendar] = useState(false);
 
   const setPlan = useCallback((fn: (p: Plan) => Plan) => {
     setPlanState((prev) => {
@@ -155,7 +158,7 @@ export default function App() {
     const report = await buildReport({
       plan: {
         start: p.start, endMode: endModeOf(p), end: p.end, startCity: startCity(p),
-        stops: p.stops.map((s) => ({ spoken: s.spoken, input: s.input, city: s.city, verify: s.verify, fixReason: s.fixReason, address: s.address, located: !!s.location, order: s.order, delivery: s.delivery })),
+        stops: p.stops.map((s) => ({ spoken: s.spoken, input: s.input, city: s.city, verify: s.verify, fixReason: s.fixReason, address: s.address, located: !!s.location, order: s.order, delivery: s.delivery, failReason: s.failReason })),
         optimized: p.optimized && { stops: p.optimized.order.length, totalDurationSec: p.optimized.totalDurationSec, totalDistanceM: p.optimized.totalDistanceM, at: new Date(p.optimized.at).toISOString() },
       },
       screenError: error || undefined,
@@ -164,6 +167,22 @@ export default function App() {
     logInfo('logs_shared', how);
     if (how === 'downloaded') setNotice('קובץ הלוגים ירד לטלפון (בתיקיית ההורדות). אפשר לצרף אותו בוואטסאפ');
     if (how === 'copied') setNotice('הלוגים הועתקו. הדבק אותם בוואטסאפ');
+  };
+
+  // Every outcome also goes into that day's history, which the calendar and the reports read.
+  const onDelivery = (id: string, d: Stop['delivery'], reason?: string) => {
+    const s = (planRef.current ?? plan).stops.find((x) => x.id === id);
+    if (!s) return;
+    // Editing the reason of a stop that already failed keeps its time, so it stays on the same day.
+    const at = d === 'todo' ? undefined : s.delivery === d && s.handledAt ? s.handledAt : Date.now();
+    const failReason = d === 'failed' ? reason?.trim() || undefined : undefined;
+    logInfo('delivery', { id, status: d, reason: failReason });
+    setPlan((p) => updateStop(p, id, { delivery: d, handledAt: at, failReason }, true));
+    if (s.handledAt && (!at || dayKey(s.handledAt) !== dayKey(at))) { const day = dayKey(s.handledAt); updateDay(day, (log) => withoutEntry(log, day, id)); }
+    if (at && d !== 'todo') {
+      const day = dayKey(at);
+      updateDay(day, (log) => withEntry(log, day, { stopId: id, address: s.address ?? s.input, outcome: d, reason: failReason, at }));
+    }
   };
 
   const reset = () => { if (confirm('למחוק את כל העצירות ולהתחיל מסלול חדש?')) setPlan((p) => ({ ...emptyPlan(), start: p.start, end: p.end })); };
@@ -176,17 +195,20 @@ export default function App() {
       <header className="top">
         <h1>Delvr</h1>
         <div>
+          <button type="button" className="link" onClick={() => setShowCalendar((v) => !v)}>{showCalendar ? 'מסלול' : 'יומן'}</button>
           <button type="button" className="link" onClick={sendLogs}>שלח לוגים</button>
-          {plan.stops.length > 0 && <button type="button" className="link" onClick={reset}>מסלול חדש</button>}
+          {plan.stops.length > 0 && !showCalendar && <button type="button" className="link" onClick={reset}>מסלול חדש</button>}
         </div>
       </header>
       {!hasMapsKey() && <div className="banner bad">חסר מפתח Google. הוסף VITE_GOOGLE_MAPS_KEY לקובץ .env.local</div>}
       {error && <div className="banner bad" role="alert">{error}</div>}
       {notice && <div className="banner warn">{notice}</div>}
 
+      {showCalendar ? <Calendar onClose={() => setShowCalendar(false)} onNotice={setNotice} /> : <>
+
       {plan.optimized ? (
         <RouteView plan={plan} busy={optimizing} onReoptimize={optimize}
-          onDelivery={(id, d) => { logInfo('delivery', { id, status: d }); setPlan((p) => updateStop(p, id, { delivery: d, handledAt: d === 'todo' ? undefined : Date.now() }, true)); }} />
+          onDelivery={onDelivery} />
       ) : null}
 
       {!plan.optimized && <StartPoint start={plan.start} end={plan.end} onVerify={verifyPlace} onHere={useHere}
@@ -205,6 +227,7 @@ export default function App() {
           {!gate.ok && <div className="muted small center">{gate.why}</div>}
         </div>
       )}
+      </>}
       <footer className="muted small center">גרסה {import.meta.env.VITE_BUILD ?? 'dev'}</footer>
     </main>
   );
