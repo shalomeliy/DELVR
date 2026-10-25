@@ -30,6 +30,7 @@ export function startDictation(handlers: { onText: (finalText: string, interim: 
   let wanted = true;
   let rec: Rec;
   let began = 0;
+  let raw: { f: boolean; t: string }[] = [];   // the recognizer's last result list, logged when a session ends
   const commit = () => {
     committed = appendSession(committed, [session, pending].filter(Boolean).join(' '));
     session = ''; pending = '';
@@ -38,9 +39,10 @@ export function startDictation(handlers: { onText: (finalText: string, interim: 
   const begin = () => {
     rec = new SR!();
     rec.lang = 'he-IL'; rec.continuous = !ANDROID; rec.interimResults = true;
-    session = ''; pending = ''; began = Date.now();
+    session = ''; pending = ''; began = Date.now(); raw = [];
     rec.onresult = (e) => {
       const list = Array.from(e.results, (r) => ({ isFinal: r.isFinal, text: r[0].transcript }));
+      raw = list.map((r) => ({ f: r.isFinal, t: r.text }));
       const { final, interim } = mergeResults(list);
       session = final; pending = interim;
       handlers.onText(appendSession(committed, session), interim);
@@ -52,7 +54,7 @@ export function startDictation(handlers: { onText: (finalText: string, interim: 
       handlers.onError(e.error === 'not-allowed' ? 'אין הרשאה למיקרופון. אשר גישה בדפדפן' : `שגיאת הקלטה: ${e.error}`);
     };
     rec.onend = () => {
-      logInfo('speech_session_end', { ms: Date.now() - began, final: session.length, interim: pending.length });
+      logInfo('speech_session_end', { ms: Date.now() - began, committed, final: session, interim: pending, raw });
       commit();
       if (wanted) { try { begin(); return; } catch { /* fall through */ } }
       handlers.onText(committed, '');
@@ -70,6 +72,7 @@ export function startDictation(handlers: { onText: (finalText: string, interim: 
       // Hand the text back right away instead of waiting for onend, which may come late or not at all.
       rec.onresult = null; rec.onend = null; rec.onerror = null;
       try { rec.stop(); } catch { /* already ended */ }
+      logInfo('speech_session_end', { stopped: true, ms: Date.now() - began, committed, final: session, interim: pending, raw });
       commit();
       logInfo('speech_stop', { transcript: committed });
       handlers.onText(committed, '');

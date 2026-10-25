@@ -17,6 +17,14 @@ describe('mergeResults', () => {
   it('interim shows only the new words', () => {
     expect(mergeResults([f('הרצל 3'), { isFinal: false, text: 'הרצל 3 רחובות' }])).toEqual({ final: 'הרצל 3', interim: 'רחובות' });
   });
+  it('unfinished text split over several results is all kept', () => {
+    const i = (text: string) => ({ isFinal: false, text });
+    expect(mergeResults([i('ביאליק'), i('9 ראשון לציון')]).interim).toBe('ביאליק 9 ראשון לציון');
+  });
+  it('Android: growing unfinished results keep only the longest', () => {
+    const i = (text: string) => ({ isFinal: false, text });
+    expect(mergeResults([i('ביאליק'), i('ביאליק 9'), i('ביאליק 9 ראשון לציון')]).interim).toBe('ביאליק 9 ראשון לציון');
+  });
 });
 
 describe('appendSession', () => {

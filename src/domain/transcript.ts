@@ -7,19 +7,28 @@ export interface ResultLike { isFinal: boolean; text: string }
 
 const norm = (s: string) => s.replace(/\s+/g, ' ').trim();
 
-export function mergeResults(results: ResultLike[]): { final: string; interim: string } {
+// Growing results keep the longer one, exact repeats are dropped, anything else is a new phrase.
+function dedupe(texts: string[]): string {
   const parts: string[] = [];
-  let interim = '';
-  for (const r of results) {
-    const t = norm(r.text);
-    if (!t) continue;
-    if (!r.isFinal) { interim = t; continue; }
+  for (const t of texts) {
     const last = parts[parts.length - 1];
-    if (last !== undefined && t.startsWith(last)) parts[parts.length - 1] = t;   // grew: keep the longer one
-    else if (last !== undefined && last.endsWith(t)) continue;                     // repeat of what we have
+    if (last !== undefined && t.startsWith(last)) parts[parts.length - 1] = t;
+    else if (last !== undefined && last.endsWith(t)) continue;
     else parts.push(t);
   }
-  const final = parts.join(' ');
+  return parts.join(' ');
+}
+
+export function mergeResults(results: ResultLike[]): { final: string; interim: string } {
+  const finals: string[] = [];
+  const interims: string[] = [];
+  for (const r of results) {
+    const t = norm(r.text);
+    if (t) (r.isFinal ? finals : interims).push(t);
+  }
+  const final = dedupe(finals);
+  // Chrome can split the unfinished text over several results ("ביאליק" + "9 ראשון לציון"), so all are kept, not just the last.
+  let interim = dedupe(interims);
   // Android's interim often repeats the final text; show only what is new.
   if (interim && final && interim.startsWith(final)) interim = norm(interim.slice(final.length));
   return { final, interim };
