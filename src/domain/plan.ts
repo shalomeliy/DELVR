@@ -64,6 +64,15 @@ export function removeStop(plan: Plan, id: string): Plan {
   return { ...plan, stops: plan.stops.filter((s) => s.id !== id), optimized: undefined };
 }
 
+/**
+ * Drops a stop from a route that was already sorted, without asking Google again. The sorted order still
+ * lists its id so the other stops keep their legs; orderedStops skips it. Times next to it are stale
+ * until the courier re-sorts.
+ */
+export function removeFromRoute(plan: Plan, id: string): Plan {
+  return { ...plan, stops: plan.stops.filter((s) => s.id !== id) };
+}
+
 export function canOptimize(plan: Plan): { ok: boolean; why?: string } {
   if (!plan.start.location) return { ok: false, why: 'קודם לאמת את כתובת היציאה' };
   const todo = plan.stops.filter((s) => s.delivery === 'todo');

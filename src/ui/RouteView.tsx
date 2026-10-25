@@ -9,19 +9,22 @@ interface Props {
   plan: Plan;
   onDelivery: (id: string, d: Stop['delivery'], reason?: string) => void;
   onReoptimize: () => void;
+  onRemove: (id: string) => void;
   busy: boolean;
 }
 
 const MAP_KEY = 'delvr_map';
 const STATUS = { delivered: '✓ נמסר', pasted: '✓ הדבקה', failed: '✕ נכשל' } as const;
 
-export function RouteView({ plan, onDelivery, onReoptimize, busy }: Props) {
+export function RouteView({ plan, onDelivery, onReoptimize, onRemove, busy }: Props) {
   const opt = plan.optimized!;
   const stops = orderedStops(plan);
   const addedAt = new Map(plan.stops.map((s, i) => [s.id, i + 1]));
   const points = stops.flatMap((s, i) => (s.location ? [{ ...s.location, label: String(i + 1), status: s.delivery }] : []));
   const done = plan.stops.filter((s) => s.delivery !== 'todo').length;
   const routed = new Set(opt.order);
+  const kept = new Set(plan.stops.map((s) => s.id));
+  const removed = opt.order.some((id) => !kept.has(id));
   const endLeg = opt.legs[opt.order.length];
   // Open by default; a courier who closes it keeps it closed, since every map Google draws is a billed map load.
   const [showMap, setShowMapState] = useState(() => { try { return localStorage.getItem(MAP_KEY) !== 'off'; } catch { return true; } });
@@ -39,7 +42,7 @@ export function RouteView({ plan, onDelivery, onReoptimize, busy }: Props) {
         <div><b>{fmtKm(opt.totalDistanceM)}</b><span>מרחק</span></div>
         <div><b>{fmtClock(opt.at + opt.totalDurationSec * 1000)}</b><span>סיום משוער</span></div>
       </div>
-      <p className="muted small">זמני נסיעה לפי Google, כולל תנועה. לא כולל זמן עצירה בכל כתובת. {done ? `${done} מתוך ${plan.stops.length} טופלו: ${counts.delivered} נמסרו, ${counts.pasted} הדבקות, ${counts.failed} נכשלו.` : ''}</p>
+      <p className="muted small">זמני נסיעה לפי Google, כולל תנועה. לא כולל זמן עצירה בכל כתובת. {removed ? 'הוסרה כתובת מהמסלול, אז הזמנים לא מעודכנים. לחץ "סדר מחדש" לעדכון. ' : ''}{done ? `${done} מתוך ${plan.stops.length} טופלו: ${counts.delivered} נמסרו, ${counts.pasted} הדבקות, ${counts.failed} נכשלו.` : ''}</p>
       <button type="button" className="ghost" onClick={() => setShowMap((v) => !v)}>{showMap ? 'הסתר מפה' : 'הצג מפה'}</button>
       {showMap && <MapView start={plan.start.location} points={points} polyline={opt.polyline} />}
       <ol className="route">
@@ -49,7 +52,11 @@ export function RouteView({ plan, onDelivery, onReoptimize, busy }: Props) {
             <li key={s.id} className={s.delivery}>
               <div className="num">{i + 1}</div>
               <div className="grow">
-                <div>{s.address ?? s.input}</div>
+                <div className="stop-head">
+                  <span>{s.address ?? s.input}</span>
+                  <button type="button" className="icon" aria-label="הסר מהמסלול" title="הסר מהמסלול"
+                    onClick={() => { if (confirm(`להסיר את ${s.address ?? s.input} מהמסלול?`)) onRemove(s.id); }}>✕</button>
+                </div>
                 <div className="muted small">
                   {leg && `${fmtDuration(leg.durationSec)} · ${fmtKm(leg.distanceM)}`}
                   {addedAt.get(s.id) !== i + 1 && ` · היה מספר ${addedAt.get(s.id)} ברשימה`}

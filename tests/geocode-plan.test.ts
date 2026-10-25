@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { judge, sameCity } from '../src/services/geocode';
 import type { Plan } from '../src/domain/types';
-import { canOptimize, emptyPlan, endModeOf, findDuplicate, orderedStops, routeOrigin, startCity, stopsFromText, addStops } from '../src/domain/plan';
+import { removeFromRoute, canOptimize, emptyPlan, endModeOf, findDuplicate, orderedStops, routeOrigin, startCity, stopsFromText, addStops } from '../src/domain/plan';
 import { isFresh } from '../src/store/db';
 
 const result = (over: Partial<{ number: boolean; city: string; partial: boolean }> = {}) => ({
@@ -89,5 +89,15 @@ describe('address memory', () => {
     expect(isFresh({ ...r, at: 0 }, 29 * day)).toBe(true);
     expect(isFresh({ ...r, at: 0 }, 31 * day)).toBe(false);
     expect(isFresh(r)).toBe(false);
+  });
+});
+
+describe('removeFromRoute', () => {
+  it('drops the stop but keeps the sorted route for the others', () => {
+    const stops = stopsFromText('הרצל 1 יבנה, הרצל 2 יבנה, הרצל 3 יבנה', null);
+    const plan = { ...emptyPlan(), stops, optimized: { order: stops.map((s) => s.id), legs: [], totalDurationSec: 0, totalDistanceM: 0, at: 0 } };
+    const next = removeFromRoute(plan, stops[1].id);
+    expect(next.optimized).toBeDefined();
+    expect(orderedStops(next).map((s) => s.id)).toEqual([stops[0].id, stops[2].id]);
   });
 });

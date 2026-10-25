@@ -91,3 +91,6 @@ ol.route li.pasted { opacity: .6; }
 .map { height: 340px; border-radius: 10px; margin: 10px 0; background: var(--bg); }
 .sticky { position: fixed; bottom: 0; inset-inline: 0; padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); background: var(--bg); border-top: 1px solid var(--line); }
 .sticky > * { max-width: 616px; margin-inline: auto; }
+.stop-head { display: flex; align-items: flex-start; gap: 4px; }
+.stop-head span { flex: 1; }
+.stop-head .icon { min-height: 32px; min-width: 32px; }
