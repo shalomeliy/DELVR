@@ -26,6 +26,26 @@ export function startDictation(handlers: { onText: (finalText: string, interim: 
   let session = '';     // final text of the current session
   let wanted = true;
   let rec: Rec;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  const finish = () => {
+    handlers.onText(committed, '');
+    handlers.onEnd();
+  };
+
+  // Chrome on Android often refuses a start() made right inside onend ("already started").
+  // That used to end the recording after the first address, so the restart waits a moment and retries.
+  const restart = (attempt: number) => {
+    timer = undefined;
+    if (!wanted) { finish(); return; }
+    try { begin(); }
+    catch (e) {
+      logWarn('speech_restart_failed', { attempt, error: (e as Error).message });
+      if (attempt < 5) { timer = setTimeout(() => restart(attempt + 1), 300); return; }
+      wanted = false;
+      finish();
+    }
+  };
 
   const begin = () => {
     rec = new SR!();
@@ -46,9 +66,8 @@ export function startDictation(handlers: { onText: (finalText: string, interim: 
     rec.onend = () => {
       committed = appendSession(committed, session);
       session = '';
-      if (wanted) { try { begin(); return; } catch { /* fall through */ } }
-      handlers.onText(committed, '');
-      handlers.onEnd();
+      if (wanted) { timer = setTimeout(() => restart(1), ANDROID ? 150 : 0); return; }
+      finish();
     };
     rec.start();
   };
@@ -57,7 +76,9 @@ export function startDictation(handlers: { onText: (finalText: string, interim: 
   logInfo('speech_start', { android: ANDROID });
   return {
     stop() {
-      wanted = false; rec.stop();
+      wanted = false;
+      // Between two sessions there is no live recognizer to stop, so end here.
+      if (timer) { clearTimeout(timer); timer = undefined; finish(); } else rec.stop();
       logInfo('speech_stop', { transcript: appendSession(committed, session) });
     },
   };
