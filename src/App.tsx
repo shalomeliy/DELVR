@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { addStops, canOptimize, emptyPlan, endModeOf, findDuplicate, removeStop, startCity, stopsFromText, updateStop } from './domain/plan';
+import { addStops, canOptimize, removeFromRoute, emptyPlan, endModeOf, findDuplicate, removeStop, startCity, stopsFromText, updateStop } from './domain/plan';
 import { dayKey, withEntry, withoutEntry } from './domain/history';
 import { parseTranscript } from './domain/parser.js';
 import type { Place, Plan, Stop } from './domain/types';
@@ -208,7 +208,8 @@ export default function App() {
 
       {plan.optimized ? (
         <RouteView plan={plan} busy={optimizing} onReoptimize={optimize}
-          onDelivery={onDelivery} />
+          onDelivery={onDelivery}
+          onRemove={(id) => { logInfo('route_remove', id); setPlan((p) => removeFromRoute(p, id)); }} />
       ) : null}
 
       {!plan.optimized && <StartPoint start={plan.start} end={plan.end} onVerify={verifyPlace} onHere={useHere}
