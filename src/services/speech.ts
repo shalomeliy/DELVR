@@ -4,7 +4,7 @@ import { logInfo, logWarn } from './log';
 // Chrome's built-in recognizer in Hebrew. It stops after silence, so we restart it until the courier presses stop.
 type Rec = {
   lang: string; continuous: boolean; interimResults: boolean;
-  start(): void; stop(): void;
+  start(): void; stop(): void; abort(): void;
   onresult: ((e: { resultIndex: number; results: ArrayLike<{ isFinal: boolean; 0: { transcript: string } }> }) => void) | null;
   onend: (() => void) | null;
   onerror: ((e: { error: string }) => void) | null;
@@ -18,17 +18,32 @@ const ANDROID = /Android/i.test(navigator.userAgent);
 
 export const speechSupported = () => !!SR;
 
+/** Silence after which a recognizer is treated as stuck and replaced. */
+const STUCK_MS = 1500;
+
 export interface Dictation { stop(): void }
 
 export function startDictation(handlers: { onText: (finalText: string, interim: string) => void; onError: (msg: string) => void; onEnd: () => void }): Dictation {
   if (!SR) throw new Error('הדפדפן הזה לא תומך בהקלטה. פתח ב-Chrome');
   let committed = '';   // text from finished sessions
   let session = '';     // final text of the current session
+  let pending = '';     // interim text of the current session not yet covered by the final text
   let wanted = true;
   let rec: Rec;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let lastHeard = Date.now();
+
+  // Chrome on Android sometimes sends only interim results and then goes quiet after a short pause:
+  // no final text, no onend, no error. Interim text is kept as if it were final so nothing is lost.
+  const commit = () => {
+    committed = appendSession(committed, [session, pending].filter(Boolean).join(' '));
+    session = ''; pending = '';
+  };
+
+  const detach = (r: Rec) => { r.onresult = null; r.onend = null; r.onerror = null; };
 
   const finish = () => {
+    clearInterval(watchdog);
     handlers.onText(committed, '');
     handlers.onEnd();
   };
@@ -50,36 +65,56 @@ export function startDictation(handlers: { onText: (finalText: string, interim: 
   const begin = () => {
     rec = new SR!();
     rec.lang = 'he-IL'; rec.continuous = !ANDROID; rec.interimResults = true;
-    session = '';
+    session = ''; pending = '';
+    lastHeard = Date.now();
     rec.onresult = (e) => {
       const list = Array.from(e.results, (r) => ({ isFinal: r.isFinal, text: r[0].transcript }));
       const { final, interim } = mergeResults(list);
-      session = final;
+      session = final; pending = interim;
+      lastHeard = Date.now();
       handlers.onText(appendSession(committed, session), interim);
     };
     rec.onerror = (e) => {
       logWarn('speech_error', { error: e.error });
       if (e.error === 'no-speech' || e.error === 'aborted') return;
       wanted = false;
+      clearInterval(watchdog);
       handlers.onError(e.error === 'not-allowed' ? 'אין הרשאה למיקרופון. אשר גישה בדפדפן' : `שגיאת הקלטה: ${e.error}`);
     };
     rec.onend = () => {
-      committed = appendSession(committed, session);
-      session = '';
+      commit();
       if (wanted) { timer = setTimeout(() => restart(1), ANDROID ? 150 : 0); return; }
       finish();
     };
     rec.start();
   };
 
+  // A recognizer that has heard nothing for a moment may be stuck, so it is replaced with a fresh one.
+  // Replacing one that was only waiting costs nothing: what it heard is already committed.
+  const watchdog = setInterval(() => {
+    if (!ANDROID || !wanted || timer || Date.now() - lastHeard < STUCK_MS) return;
+    logInfo('speech_recycle', { heard: !!(session || pending) });
+    const old = rec;
+    detach(old);
+    try { old.abort(); } catch { /* already ended */ }
+    commit();
+    handlers.onText(committed, '');
+    restart(1);
+  }, 500);
+
   begin();
   logInfo('speech_start', { android: ANDROID });
   return {
     stop() {
+      if (!wanted) return;
       wanted = false;
-      // Between two sessions there is no live recognizer to stop, so end here.
-      if (timer) { clearTimeout(timer); timer = undefined; finish(); } else rec.stop();
-      logInfo('speech_stop', { transcript: appendSession(committed, session) });
+      clearTimeout(timer); timer = undefined;
+      // A stuck recognizer never fires onend, so the text is committed and handed back right here.
+      detach(rec);
+      try { rec.stop(); } catch { /* already ended */ }
+      commit();
+      logInfo('speech_stop', { transcript: committed });
+      finish();
     },
   };
 }
