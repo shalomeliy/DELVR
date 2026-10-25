@@ -110,13 +110,13 @@ export default function App() {
     const fresh = stopsFromText(text, startCity(plan));
     logInfo('add_stops', { text, startCity: startCity(plan), parsed: fresh.map((f) => f.input) });
     if (!fresh.length) { setError('לא זיהיתי כתובות בטקסט'); return; }
-    const { plan: next, dropped, duplicates } = addStops(plan, fresh);
+    const { plan: next, dropped, duplicates, droppedInputs, duplicateInputs } = addStops(plan, fresh);
     setPlan(() => next);
     const notes = [];
-    if (duplicates) notes.push(duplicates === 1 ? 'כתובת כפולה אחת לא נוספה' : `${duplicates} כתובות כפולות לא נוספו`);
-    if (dropped) notes.push(`${dropped} כתובות לא נוספו: אפשר עד ${MAX_STOPS} עצירות בגרסה הזו`);
+    if (duplicates) notes.push(`${duplicates === 1 ? 'כתובת אחת לא נוספה כי היא כבר ברשימה' : `${duplicates} כתובות לא נוספו כי הן כבר ברשימה`}: ${duplicateInputs.join(' · ')}`);
+    if (dropped) notes.push(`${dropped === 1 ? 'כתובת אחת לא נוספה' : `${dropped} כתובות לא נוספו`} כי אפשר עד ${MAX_STOPS} עצירות בגרסה הזו: ${droppedInputs.join(' · ')}`);
     if (notes.length) setNotice(notes.join('. '));
-    if (duplicates) logInfo('duplicates_skipped', duplicates);
+    if (duplicates) logInfo('duplicates_skipped', duplicateInputs);
     next.stops.filter((s) => fresh.some((f) => f.id === s.id) && s.verify === 'pending').forEach(verifyStop);
   };
 

@@ -33,15 +33,19 @@ export function stopsFromText(text: string, defaultCity: string | null): Stop[] 
 
 const sameKey = (s: string) => s.replace(/[,.\-־'"׳״]/g, ' ').replace(/^(רחוב|רח)\s+/, '').replace(/\s+/g, ' ').trim();
 
-/** Adds stops up to the v1 cap, skipping addresses already in the list. */
-export function addStops(plan: Plan, stops: Stop[]): { plan: Plan; dropped: number; duplicates: number } {
+/** Adds stops up to the v1 cap, skipping addresses already in the list. Says which ones were left out. */
+export function addStops(plan: Plan, stops: Stop[]): { plan: Plan; dropped: number; duplicates: number; droppedInputs: string[]; duplicateInputs: string[] } {
   const seen = new Set(plan.stops.flatMap((s) => [sameKey(s.input), sameKey(s.spoken)]));
-  const unique = stops.filter((s) => { const k = sameKey(s.input); if (seen.has(k)) return false; seen.add(k); return true; });
+  const duplicateInputs: string[] = [];
+  const unique = stops.filter((s) => { const k = sameKey(s.input); if (seen.has(k)) { duplicateInputs.push(s.input); return false; } seen.add(k); return true; });
   const room = Math.max(0, MAX_STOPS - plan.stops.length);
+  const droppedInputs = unique.slice(room).map((s) => s.input);
   return {
     plan: { ...plan, stops: [...plan.stops, ...unique.slice(0, room)], optimized: undefined },
-    dropped: Math.max(0, unique.length - room),
-    duplicates: stops.length - unique.length,
+    dropped: droppedInputs.length,
+    duplicates: duplicateInputs.length,
+    droppedInputs,
+    duplicateInputs,
   };
 }
 

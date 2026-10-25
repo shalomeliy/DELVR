@@ -58,6 +58,7 @@ describe('plan', () => {
     const first = addStops(emptyPlan(), stopsFromText('הרצל 3 יבנה, דוכיפת 5 יבנה', null));
     const again = addStops(first.plan, stopsFromText('הרצל 3 יבנה, דוכיפת 5 יבנה, הרצל 3 יבנה, התורן 7 יבנה', null));
     expect(again.duplicates).toBe(3);
+    expect(again.duplicateInputs).toEqual(['הרצל 3, יבנה', 'דוכיפת 5, יבנה', 'הרצל 3, יבנה']);
     expect(again.plan.stops.map((s) => s.input)).toEqual(['הרצל 3, יבנה', 'דוכיפת 5, יבנה', 'התורן 7, יבנה']);
   });
   it('finds a stop Google placed at the same spot as another', () => {
