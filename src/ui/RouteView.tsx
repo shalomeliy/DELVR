@@ -2,14 +2,17 @@ import { useState } from 'react';
 import { endModeOf, fmtClock, fmtDuration, fmtKm, orderedStops } from '../domain/plan';
 import type { Plan, Stop } from '../domain/types';
 import { googleMapsUrl, wazeUrl } from '../services/navigation';
+import { FailReason } from './FailReason';
 import { MapView } from './MapView';
 
 interface Props {
   plan: Plan;
-  onDelivery: (id: string, d: Stop['delivery']) => void;
+  onDelivery: (id: string, d: Stop['delivery'], reason?: string) => void;
   onReoptimize: () => void;
   busy: boolean;
 }
+
+const STATUS = { delivered: '✓ נמסר', pasted: '✓ הדבקה', failed: '✕ נכשל' } as const;
 
 export function RouteView({ plan, onDelivery, onReoptimize, busy }: Props) {
   const opt = plan.optimized!;
@@ -21,6 +24,10 @@ export function RouteView({ plan, onDelivery, onReoptimize, busy }: Props) {
   const endLeg = opt.legs[opt.order.length];
   // Hidden until asked for: every map Google draws is a billed map load, and the list plus Waze is enough to drive.
   const [showMap, setShowMap] = useState(false);
+  // The stop whose failure reason box is open.
+  const [failing, setFailing] = useState<string | null>(null);
+  const counts = { delivered: 0, pasted: 0, failed: 0 };
+  for (const s of plan.stops) if (s.delivery !== 'todo') counts[s.delivery]++;
 
   return (
     <section className="card">
@@ -30,7 +37,7 @@ export function RouteView({ plan, onDelivery, onReoptimize, busy }: Props) {
         <div><b>{fmtKm(opt.totalDistanceM)}</b><span>מרחק</span></div>
         <div><b>{fmtClock(opt.at + opt.totalDurationSec * 1000)}</b><span>סיום משוער</span></div>
       </div>
-      <p className="muted small">זמני נסיעה לפי Google, כולל תנועה. לא כולל זמן עצירה בכל כתובת. {done ? `${done} מתוך ${plan.stops.length} טופלו.` : ''}</p>
+      <p className="muted small">זמני נסיעה לפי Google, כולל תנועה. לא כולל זמן עצירה בכל כתובת. {done ? `${done} מתוך ${plan.stops.length} טופלו: ${counts.delivered} נמסרו, ${counts.pasted} הדבקות, ${counts.failed} נכשלו.` : ''}</p>
       <button type="button" className="ghost" onClick={() => setShowMap((v) => !v)}>{showMap ? 'הסתר מפה' : 'הצג מפה'}</button>
       {showMap && <MapView start={plan.start.location} points={points} polyline={opt.polyline} />}
       <ol className="route">
@@ -45,17 +52,24 @@ export function RouteView({ plan, onDelivery, onReoptimize, busy }: Props) {
                   {leg && `${fmtDuration(leg.durationSec)} · ${fmtKm(leg.distanceM)}`}
                   {addedAt.get(s.id) !== i + 1 && ` · היה מספר ${addedAt.get(s.id)} ברשימה`}
                 </div>
-                {s.location && s.delivery === 'todo' && (
+                {s.location && s.delivery === 'todo' && failing !== s.id && (
                   <div className="actions">
-                    <a className="btn" href={wazeUrl(s.location, s.address)} rel="noreferrer">Waze</a>
-                    <a className="btn ghost" href={googleMapsUrl(s.location)} target="_blank" rel="noreferrer">Google</a>
+                    <a className="btn nav" href={wazeUrl(s.location, s.address)} rel="noreferrer">Waze</a>
+                    <a className="btn ghost nav" href={googleMapsUrl(s.location)} target="_blank" rel="noreferrer">Google</a>
                     <button type="button" className="ok-btn" onClick={() => onDelivery(s.id, 'delivered')}>נמסר</button>
-                    <button type="button" className="bad-btn" onClick={() => onDelivery(s.id, 'failed')}>נכשל</button>
+                    <button type="button" className="paste-btn" onClick={() => onDelivery(s.id, 'pasted')}>הדבקה</button>
+                    <button type="button" className="bad-btn" onClick={() => setFailing(s.id)}>נכשל</button>
                   </div>
                 )}
-                {s.delivery !== 'todo' && (
+                {failing === s.id && (
+                  <FailReason initial={s.failReason} onCancel={() => setFailing(null)}
+                    onSave={(reason) => { setFailing(null); onDelivery(s.id, 'failed', reason); }} />
+                )}
+                {s.delivery !== 'todo' && failing !== s.id && (
                   <div className="small">
-                    <span className={s.delivery === 'delivered' ? 'ok' : 'bad'}>{s.delivery === 'delivered' ? '✓ נמסר' : '✕ נכשל'}</span>
+                    <span className={s.delivery === 'failed' ? 'bad' : s.delivery === 'pasted' ? 'warn' : 'ok'}>{STATUS[s.delivery]}</span>
+                    {s.delivery === 'failed' && s.failReason && <span className="muted">: {s.failReason}</span>}
+                    {s.delivery === 'failed' && <button type="button" className="link" onClick={() => setFailing(s.id)}>{s.failReason ? 'ערוך סיבה' : 'הוסף סיבה'}</button>}
                     <button type="button" className="link" onClick={() => onDelivery(s.id, 'todo')}>בטל</button>
                   </div>
                 )}
