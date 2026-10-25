@@ -24,17 +24,25 @@ export function startDictation(handlers: { onText: (finalText: string, interim: 
   if (!SR) throw new Error('הדפדפן הזה לא תומך בהקלטה. פתח ב-Chrome');
   let committed = '';   // text from finished sessions
   let session = '';     // final text of the current session
+  // Since 2026-10-20 Chrome on Android sends only interim results and never marks them final.
+  // The interim text was dropped when a session ended after a pause, so only the last address survived.
+  let pending = '';     // interim text of the current session not covered by the final text
   let wanted = true;
   let rec: Rec;
+  let began = 0;
+  const commit = () => {
+    committed = appendSession(committed, [session, pending].filter(Boolean).join(' '));
+    session = ''; pending = '';
+  };
 
   const begin = () => {
     rec = new SR!();
     rec.lang = 'he-IL'; rec.continuous = !ANDROID; rec.interimResults = true;
-    session = '';
+    session = ''; pending = ''; began = Date.now();
     rec.onresult = (e) => {
       const list = Array.from(e.results, (r) => ({ isFinal: r.isFinal, text: r[0].transcript }));
       const { final, interim } = mergeResults(list);
-      session = final;
+      session = final; pending = interim;
       handlers.onText(appendSession(committed, session), interim);
     };
     rec.onerror = (e) => {
@@ -44,8 +52,8 @@ export function startDictation(handlers: { onText: (finalText: string, interim: 
       handlers.onError(e.error === 'not-allowed' ? 'אין הרשאה למיקרופון. אשר גישה בדפדפן' : `שגיאת הקלטה: ${e.error}`);
     };
     rec.onend = () => {
-      committed = appendSession(committed, session);
-      session = '';
+      logInfo('speech_session_end', { ms: Date.now() - began, final: session.length, interim: pending.length });
+      commit();
       if (wanted) { try { begin(); return; } catch { /* fall through */ } }
       handlers.onText(committed, '');
       handlers.onEnd();
@@ -57,8 +65,15 @@ export function startDictation(handlers: { onText: (finalText: string, interim: 
   logInfo('speech_start', { android: ANDROID });
   return {
     stop() {
-      wanted = false; rec.stop();
-      logInfo('speech_stop', { transcript: appendSession(committed, session) });
+      if (!wanted) return;
+      wanted = false;
+      // Hand the text back right away instead of waiting for onend, which may come late or not at all.
+      rec.onresult = null; rec.onend = null; rec.onerror = null;
+      try { rec.stop(); } catch { /* already ended */ }
+      commit();
+      logInfo('speech_stop', { transcript: committed });
+      handlers.onText(committed, '');
+      handlers.onEnd();
     },
   };
 }
