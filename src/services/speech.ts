@@ -20,7 +20,7 @@ const ANDROID = /Android/i.test(navigator.userAgent);
 // (mergeResults removes the repeats Android sends in that mode), and a session that heard something
 // and then went quiet for this long is replaced once. A session that heard nothing is left alone,
 // so silence does not cause a restart beep every second.
-const STUCK_MS = 3000;
+const STUCK_MS = 2000;
 
 export const speechSupported = () => !!SR;
 
