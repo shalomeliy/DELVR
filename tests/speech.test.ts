@@ -9,7 +9,9 @@ class FakeRec {
   onerror: ((e: unknown) => void) | null = null;
   constructor() { FakeRec.all.push(this); }
   start() {}
+  aborted = false;
   stop() { this.onend?.(); }
+  abort() { this.aborted = true; }
   hear(text: string) { this.onresult?.({ resultIndex: 0, results: [{ isFinal: false, 0: { transcript: text } }] }); }
 }
 
@@ -46,5 +48,36 @@ describe('dictation with interim-only results (Chrome on Android)', () => {
     d.stop();
     expect(ended).toBe(true);
     expect(text).toBe('הרצל 3');
+  });
+
+  it('listens continuously', async () => {
+    const { startDictation } = await load();
+    startDictation({ onText: () => {}, onError: () => {}, onEnd: () => {} }).stop();
+    expect(FakeRec.all[0].continuous).toBe(true);
+  });
+
+  it('replaces a session that heard something and then got stuck, keeping the text', async () => {
+    vi.useFakeTimers();
+    const { startDictation } = await load();
+    let text = '';
+    const d = startDictation({ onText: (f) => { text = f; }, onError: () => {}, onEnd: () => {} });
+    FakeRec.all[0].hear('תל חי 13 ראשון לציון');
+    await vi.advanceTimersByTimeAsync(4000);
+    expect(FakeRec.all[0].aborted).toBe(true);
+    expect(FakeRec.all).toHaveLength(2);
+    FakeRec.all[1].hear('ביאליק 9');
+    d.stop();
+    expect(text).toBe('תל חי 13 ראשון לציון ביאליק 9');
+    vi.useRealTimers();
+  });
+
+  it('does not restart a session that heard nothing (no beep every second)', async () => {
+    vi.useFakeTimers();
+    const { startDictation } = await load();
+    const d = startDictation({ onText: () => {}, onError: () => {}, onEnd: () => {} });
+    await vi.advanceTimersByTimeAsync(20000);
+    expect(FakeRec.all).toHaveLength(1);
+    d.stop();
+    vi.useRealTimers();
   });
 });
