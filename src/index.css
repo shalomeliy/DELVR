@@ -88,6 +88,6 @@ ol.route li.pasted { opacity: .6; }
 .totals div { background: var(--bg); border-radius: 10px; padding: 10px 4px; }
 .totals b { display: block; font-size: 1.2rem; }
 .totals span { font-size: .8rem; color: var(--muted); }
-.map { height: 260px; border-radius: 10px; margin: 10px 0; background: var(--bg); }
+.map { height: 340px; border-radius: 10px; margin: 10px 0; background: var(--bg); }
 .sticky { position: fixed; bottom: 0; inset-inline: 0; padding: 10px 12px calc(10px + env(safe-area-inset-bottom)); background: var(--bg); border-top: 1px solid var(--line); }
 .sticky > * { max-width: 616px; margin-inline: auto; }

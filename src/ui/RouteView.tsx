@@ -12,18 +12,20 @@ interface Props {
   busy: boolean;
 }
 
+const MAP_KEY = 'delvr_map';
 const STATUS = { delivered: '✓ נמסר', pasted: '✓ הדבקה', failed: '✕ נכשל' } as const;
 
 export function RouteView({ plan, onDelivery, onReoptimize, busy }: Props) {
   const opt = plan.optimized!;
   const stops = orderedStops(plan);
   const addedAt = new Map(plan.stops.map((s, i) => [s.id, i + 1]));
-  const points = stops.filter((s) => s.location).map((s) => s.location!);
+  const points = stops.flatMap((s, i) => (s.location ? [{ ...s.location, label: String(i + 1), status: s.delivery }] : []));
   const done = plan.stops.filter((s) => s.delivery !== 'todo').length;
   const routed = new Set(opt.order);
   const endLeg = opt.legs[opt.order.length];
-  // Hidden until asked for: every map Google draws is a billed map load, and the list plus Waze is enough to drive.
-  const [showMap, setShowMap] = useState(false);
+  // Open by default; a courier who closes it keeps it closed, since every map Google draws is a billed map load.
+  const [showMap, setShowMapState] = useState(() => { try { return localStorage.getItem(MAP_KEY) !== 'off'; } catch { return true; } });
+  const setShowMap = (fn: (v: boolean) => boolean) => setShowMapState((v) => { const next = fn(v); try { localStorage.setItem(MAP_KEY, next ? 'on' : 'off'); } catch { /* ignore */ } return next; });
   // The stop whose failure reason box is open.
   const [failing, setFailing] = useState<string | null>(null);
   const counts = { delivered: 0, pasted: 0, failed: 0 };
