@@ -58,6 +58,8 @@ export interface Plan {
   end: Place | null;
   stops: Stop[];
   optimized?: Optimized;
+  /** When the courier first opened Waze or Google for a stop of this route: the actual start. */
+  startedAt?: number;
 }
 
 export const MAX_STOPS = 25;
