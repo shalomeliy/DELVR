@@ -70,7 +70,12 @@ export function removeStop(plan: Plan, id: string): Plan {
  * until the courier re-sorts.
  */
 export function removeFromRoute(plan: Plan, id: string): Plan {
-  return { ...plan, stops: plan.stops.filter((s) => s.id !== id) };
+  return { ...plan, stops: plan.stops.filter((s) => s.id !== id), optimized: plan.optimized && { ...plan.optimized, stale: true } };
+}
+
+/** Puts a corrected address on a stop of a sorted route. The order stays; the times are stale until a re-sort. */
+export function editInRoute(plan: Plan, id: string, patch: Pick<Stop, 'input' | 'city' | 'address' | 'location'>): Plan {
+  return { ...updateStop(plan, id, { ...patch, verify: 'ok', fixReason: undefined }, true), optimized: plan.optimized && { ...plan.optimized, stale: true } };
 }
 
 export function canOptimize(plan: Plan): { ok: boolean; why?: string } {

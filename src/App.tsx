@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { addStops, canOptimize, orderedStops, removeFromRoute, emptyPlan, endModeOf, findDuplicate, removeStop, startCity, stopsFromText, updateStop } from './domain/plan';
+import { addStops, canOptimize, editInRoute, orderedStops, removeFromRoute, emptyPlan, endModeOf, findDuplicate, removeStop, startCity, stopsFromText, updateStop } from './domain/plan';
 import { dayKey, routeCsv, withEntry, withoutEntry } from './domain/history';
 import { parseTranscript } from './domain/parser.js';
 import type { Place, Plan, Stop } from './domain/types';
@@ -185,6 +185,24 @@ export default function App() {
     }
   };
 
+  // Fix an address on a route that is already sorted: one lookup (free when this phone knows it), no re-sort.
+  const editRouteStop = async (id: string, text: string): Promise<string | null> => {
+    const s = (planRef.current ?? plan).stops.find((x) => x.id === id);
+    if (!s) return null;
+    const parsed = parseTranscript(text, { defaultCity: startCity(planRef.current ?? plan) })[0];
+    const query = parsed?.geocodeQuery ?? text.trim();
+    const city = parsed?.city ?? s.city;
+    try {
+      const mem = await recall(query);
+      const r = mem && isFresh(mem) ? { ok: true as const, address: mem.address, location: mem.location } : await geocode(query, city);
+      logInfo('route_edit', { from: s.address ?? s.input, to: query, ok: r.ok, google: r.address });
+      if (!r.ok) return `${r.reason}. נסה לכתוב רחוב, מספר ועיר`;
+      if (!(mem && isFresh(mem))) remember(query, { address: r.address, location: r.location });
+      setPlan((p) => editInRoute(p, id, { input: query, city, address: r.address, location: r.location }));
+      return null;
+    } catch (e) { return (e as Error).message; }
+  };
+
   // One tap: every stop of the current route with its status and failure reason, and the totals.
   const exportRoute = async () => {
     const p = planRef.current ?? plan;
@@ -219,7 +237,7 @@ export default function App() {
 
       {plan.optimized ? (
         <RouteView plan={plan} busy={optimizing} onReoptimize={optimize}
-          onDelivery={onDelivery} onReport={exportRoute}
+          onDelivery={onDelivery} onReport={exportRoute} onEdit={editRouteStop}
           onRemove={(id) => { logInfo('route_remove', id); setPlan((p) => removeFromRoute(p, id)); }} />
       ) : null}
 
