@@ -10,13 +10,14 @@ interface Props {
   onDelivery: (id: string, d: Stop['delivery'], reason?: string) => void;
   onReoptimize: () => void;
   onRemove: (id: string) => void;
+  onReport: () => void;
   busy: boolean;
 }
 
 const MAP_KEY = 'delvr_map';
 const STATUS = { delivered: '✓ נמסר', pasted: '✓ הדבקה', failed: '✕ נכשל' } as const;
 
-export function RouteView({ plan, onDelivery, onReoptimize, onRemove, busy }: Props) {
+export function RouteView({ plan, onDelivery, onReoptimize, onRemove, onReport, busy }: Props) {
   const opt = plan.optimized!;
   const stops = orderedStops(plan);
   const addedAt = new Map(plan.stops.map((s, i) => [s.id, i + 1]));
@@ -43,7 +44,10 @@ export function RouteView({ plan, onDelivery, onReoptimize, onRemove, busy }: Pr
         <div><b>{fmtClock(opt.at + opt.totalDurationSec * 1000)}</b><span>סיום משוער</span></div>
       </div>
       <p className="muted small">זמני נסיעה לפי Google, כולל תנועה. לא כולל זמן עצירה בכל כתובת. {removed ? 'הוסרה כתובת מהמסלול, אז הזמנים לא מעודכנים. לחץ "סדר מחדש" לעדכון. ' : ''}{done ? `${done} מתוך ${plan.stops.length} טופלו: ${counts.delivered} נמסרו, ${counts.pasted} הדבקות, ${counts.failed} נכשלו.` : ''}</p>
-      <button type="button" className="ghost" onClick={() => setShowMap((v) => !v)}>{showMap ? 'הסתר מפה' : 'הצג מפה'}</button>
+      <div className="route-tools">
+        <button type="button" className="ghost" onClick={() => setShowMap((v) => !v)}>{showMap ? 'הסתר מפה' : 'הצג מפה'}</button>
+        <button type="button" className="ghost" onClick={onReport}>ייצא דוח</button>
+      </div>
       {showMap && <MapView start={plan.start.location} points={points} polyline={opt.polyline} />}
       <ol className="route">
         {stops.map((s, i) => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { addDays, dailyCsv, dayKey, monthGrid, summarize, weekOf, weeklyCsv, withEntry, withoutEntry, type HistoryEntry } from '../src/domain/history';
+import { routeCsv, addDays, dailyCsv, dayKey, monthGrid, summarize, weekOf, weeklyCsv, withEntry, withoutEntry, type HistoryEntry } from '../src/domain/history';
 
 const at = (day: string, hh = 10) => new Date(`${day}T${String(hh).padStart(2, '0')}:00`).getTime();
 const entry = (stopId: string, outcome: HistoryEntry['outcome'], day = '2026-10-25', reason?: string): HistoryEntry =>
@@ -53,5 +53,19 @@ describe('reports', () => {
     expect(text).toContain('26/10/2026,שני,0,0,0,0');
     expect(text).toContain('"סה""כ שבועי",,3,1,1,1');
     expect(text).toContain('כתובת שגויה');
+  });
+});
+
+describe('route report', () => {
+  it('lists every stop with its status and reason, with totals on top', () => {
+    const text = routeCsv([
+      { address: 'הרצל 1, יבנה', status: 'delivered', at: at('2026-11-01', 9) },
+      { address: 'הרצל 2, יבנה', status: 'pasted', at: at('2026-11-01', 10) },
+      { address: 'הרצל 3, יבנה', status: 'failed', reason: 'אין מענה', at: at('2026-11-01', 11) },
+      { address: 'הרצל 4, יבנה', status: 'todo' },
+    ], at('2026-11-01', 12));
+    expect(text).toContain('4,1,1,1,1');
+    expect(text).toContain('3,"הרצל 3, יבנה",נכשל,אין מענה,11:00');
+    expect(text).toContain('4,"הרצל 4, יבנה",לא טופל,,');
   });
 });
