@@ -67,5 +67,14 @@ describe('route report', () => {
     expect(text).toContain('4,1,1,1,1');
     expect(text).toContain('3,"הרצל 3, יבנה",נכשל,אין מענה,11:00');
     expect(text).toContain('4,"הרצל 4, יבנה",לא טופל,,');
+    expect(text).toContain('לא התחיל,טרם הסתיים,');
+  });
+
+  it('shows the actual start, the end at the last status and the time between', () => {
+    const text = routeCsv([
+      { address: 'הרצל 1, יבנה', status: 'delivered', at: at('2026-11-01', 9) },
+      { address: 'הרצל 2, יבנה', status: 'failed', reason: 'אין מענה', at: at('2026-11-01', 11) },
+    ], at('2026-11-01', 12), at('2026-11-01', 8));
+    expect(text).toContain('08:00,11:00,3:00');
   });
 });

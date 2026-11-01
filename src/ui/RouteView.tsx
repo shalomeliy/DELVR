@@ -13,13 +13,15 @@ interface Props {
   /** Resolves to an error to show, or null when the new address was saved. */
   onEdit: (id: string, input: string) => Promise<string | null>;
   onReport: () => void;
+  /** The courier opened navigation to a stop; the first time marks the actual start of the route. */
+  onNavigate: () => void;
   busy: boolean;
 }
 
 const MAP_KEY = 'delvr_map';
 const STATUS = { delivered: '✓ נמסר', pasted: '✓ הדבקה', failed: '✕ נכשל' } as const;
 
-export function RouteView({ plan, onDelivery, onReoptimize, onRemove, onEdit, onReport, busy }: Props) {
+export function RouteView({ plan, onDelivery, onReoptimize, onRemove, onEdit, onReport, onNavigate, busy }: Props) {
   const opt = plan.optimized!;
   const stops = orderedStops(plan);
   const addedAt = new Map(plan.stops.map((s, i) => [s.id, i + 1]));
@@ -91,8 +93,8 @@ export function RouteView({ plan, onDelivery, onReoptimize, onRemove, onEdit, on
                 </div>
                 {s.location && s.delivery === 'todo' && failing !== s.id && (
                   <div className="actions">
-                    <a className="btn nav" href={wazeUrl(s.location, s.address)} rel="noreferrer">Waze</a>
-                    <a className="btn ghost nav" href={googleMapsUrl(s.location)} target="_blank" rel="noreferrer">Google</a>
+                    <a className="btn nav" href={wazeUrl(s.location, s.address)} rel="noreferrer" onClick={onNavigate}>Waze</a>
+                    <a className="btn ghost nav" href={googleMapsUrl(s.location)} target="_blank" rel="noreferrer" onClick={onNavigate}>Google</a>
                     <button type="button" className="ok-btn" onClick={() => onDelivery(s.id, 'delivered')}>נמסר</button>
                     <button type="button" className="paste-btn" onClick={() => onDelivery(s.id, 'pasted')}>הדבקה</button>
                     <button type="button" className="bad-btn" onClick={() => setFailing(s.id)}>נכשל</button>

@@ -208,7 +208,7 @@ export default function App() {
     const p = planRef.current ?? plan;
     const rows = orderedStops(p).map((s) => ({ address: s.address ?? s.input, status: s.delivery, reason: s.failReason, at: s.handledAt }));
     const now = Date.now();
-    const how = await shareFile(routeCsv(rows, now), `delvr-route-${dayKey(now)}.csv`, 'text/csv', 'דוח מסלול');
+    const how = await shareFile(routeCsv(rows, now, p.startedAt), `delvr-route-${dayKey(now)}.csv`, 'text/csv', 'דוח מסלול');
     logInfo('report_route', { stops: rows.length, how });
     if (how === 'downloaded') setNotice('הדוח ירד לטלפון (בתיקיית ההורדות). אפשר לפתוח אותו ב-Excel או לצרף בוואטסאפ');
     if (how === 'copied') setNotice('הדוח הועתק. הדבק אותו בוואטסאפ או במייל');
@@ -238,6 +238,7 @@ export default function App() {
       {plan.optimized ? (
         <RouteView plan={plan} busy={optimizing} onReoptimize={optimize}
           onDelivery={onDelivery} onReport={exportRoute} onEdit={editRouteStop}
+          onNavigate={() => { if (!planRef.current?.startedAt) { logInfo('route_started'); setPlan((p) => (p.startedAt ? p : { ...p, startedAt: Date.now() })); } }}
           onRemove={(id) => { logInfo('route_remove', id); setPlan((p) => removeFromRoute(p, id)); }} />
       ) : null}
 

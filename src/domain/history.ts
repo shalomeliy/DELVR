@@ -99,11 +99,21 @@ export function weeklyCsv(days: string[], logs: DayLog[]): string {
 export interface RouteRow { address: string; status: Outcome | 'todo'; reason?: string; at?: number }
 
 /** The current route in one file: every stop in driving order with its status, and the totals on top. */
-export function routeCsv(rows: RouteRow[], now = Date.now()): string {
+/** Actual end: when the last stop got its status. Only once every stop has one. */
+export const routeEndedAt = (rows: RouteRow[]) =>
+  rows.length && rows.every((r) => r.status !== 'todo' && r.at) ? Math.max(...rows.map((r) => r.at!)) : undefined;
+
+const fmtSpan = (ms: number) => { const m = Math.round(ms / 60000); return `${Math.floor(m / 60)}:${pad(m % 60)}`; };
+
+export function routeCsv(rows: RouteRow[], now = Date.now(), startedAt?: number): string {
   const done = rows.filter((r): r is RouteRow & { status: Outcome } => r.status !== 'todo');
+  const endedAt = routeEndedAt(rows);
   const s = summarize(done.map((r) => ({ stopId: '', address: r.address, outcome: r.status, at: r.at ?? now })));
   return csv([
     ['דוח מסלול', fmtDay(dayKey(now)), fmtTime(now)],
+    [],
+    ['התחלה בפועל', 'סיום בפועל', 'משך (שעות:דקות)'],
+    [startedAt ? fmtTime(startedAt) : 'לא התחיל', endedAt ? fmtTime(endedAt) : 'טרם הסתיים', startedAt && endedAt && endedAt > startedAt ? fmtSpan(endedAt - startedAt) : ''],
     [],
     ['סה"כ עצירות', 'נמסר', 'הדבקה', 'נכשל', 'לא טופל'],
     [rows.length, s.delivered, s.pasted, s.failed, rows.length - done.length],
