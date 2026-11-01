@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { judge, sameCity } from '../src/services/geocode';
 import type { Plan } from '../src/domain/types';
-import { removeFromRoute, canOptimize, emptyPlan, endModeOf, findDuplicate, orderedStops, routeOrigin, startCity, stopsFromText, addStops } from '../src/domain/plan';
+import { editInRoute, removeFromRoute, canOptimize, emptyPlan, endModeOf, findDuplicate, orderedStops, routeOrigin, startCity, stopsFromText, addStops } from '../src/domain/plan';
 import { isFresh } from '../src/store/db';
 
 const result = (over: Partial<{ number: boolean; city: string; partial: boolean }> = {}) => ({
@@ -99,5 +99,15 @@ describe('removeFromRoute', () => {
     const next = removeFromRoute(plan, stops[1].id);
     expect(next.optimized).toBeDefined();
     expect(orderedStops(next).map((s) => s.id)).toEqual([stops[0].id, stops[2].id]);
+  });
+});
+
+describe('editInRoute', () => {
+  it('changes the address, keeps the order and marks the times stale', () => {
+    const stops = stopsFromText('הרצל 1 יבנה, הרצל 2 יבנה', null);
+    const plan = { ...emptyPlan(), stops, optimized: { order: stops.map((s) => s.id), legs: [], totalDurationSec: 0, totalDistanceM: 0, at: 0 } };
+    const next = editInRoute(plan, stops[1].id, { input: 'הרצל 22, יבנה', city: 'יבנה', address: 'הרצל 22, יבנה, ישראל', location: { lat: 1, lng: 2 } });
+    expect(next.optimized?.stale).toBe(true);
+    expect(orderedStops(next).map((s) => s.address ?? s.input)).toEqual(['הרצל 1, יבנה', 'הרצל 22, יבנה, ישראל']);
   });
 });

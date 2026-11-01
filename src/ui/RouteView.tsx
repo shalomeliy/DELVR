@@ -10,6 +10,8 @@ interface Props {
   onDelivery: (id: string, d: Stop['delivery'], reason?: string) => void;
   onReoptimize: () => void;
   onRemove: (id: string) => void;
+  /** Resolves to an error to show, or null when the new address was saved. */
+  onEdit: (id: string, input: string) => Promise<string | null>;
   onReport: () => void;
   busy: boolean;
 }
@@ -17,7 +19,7 @@ interface Props {
 const MAP_KEY = 'delvr_map';
 const STATUS = { delivered: '✓ נמסר', pasted: '✓ הדבקה', failed: '✕ נכשל' } as const;
 
-export function RouteView({ plan, onDelivery, onReoptimize, onRemove, onReport, busy }: Props) {
+export function RouteView({ plan, onDelivery, onReoptimize, onRemove, onEdit, onReport, busy }: Props) {
   const opt = plan.optimized!;
   const stops = orderedStops(plan);
   const addedAt = new Map(plan.stops.map((s, i) => [s.id, i + 1]));
@@ -25,7 +27,14 @@ export function RouteView({ plan, onDelivery, onReoptimize, onRemove, onReport, 
   const done = plan.stops.filter((s) => s.delivery !== 'todo').length;
   const routed = new Set(opt.order);
   const kept = new Set(plan.stops.map((s) => s.id));
-  const removed = opt.order.some((id) => !kept.has(id));
+  const stale = opt.stale || opt.order.some((id) => !kept.has(id));
+  const [editing, setEditing] = useState<{ id: string; text: string; error: string; busy: boolean } | null>(null);
+  const saveEdit = async () => {
+    if (!editing?.text.trim()) return;
+    setEditing({ ...editing, busy: true, error: '' });
+    const error = await onEdit(editing.id, editing.text);
+    setEditing(error ? { ...editing, busy: false, error } : null);
+  };
   const endLeg = opt.legs[opt.order.length];
   // Open by default; a courier who closes it keeps it closed, since every map Google draws is a billed map load.
   const [showMap, setShowMapState] = useState(() => { try { return localStorage.getItem(MAP_KEY) !== 'off'; } catch { return true; } });
@@ -43,7 +52,7 @@ export function RouteView({ plan, onDelivery, onReoptimize, onRemove, onReport, 
         <div><b>{fmtKm(opt.totalDistanceM)}</b><span>מרחק</span></div>
         <div><b>{fmtClock(opt.at + opt.totalDurationSec * 1000)}</b><span>סיום משוער</span></div>
       </div>
-      <p className="muted small">זמני נסיעה לפי Google, כולל תנועה. לא כולל זמן עצירה בכל כתובת. {removed ? 'הוסרה כתובת מהמסלול, אז הזמנים לא מעודכנים. לחץ "סדר מחדש" לעדכון. ' : ''}{done ? `${done} מתוך ${plan.stops.length} טופלו: ${counts.delivered} נמסרו, ${counts.pasted} הדבקות, ${counts.failed} נכשלו.` : ''}</p>
+      <p className="muted small">זמני נסיעה לפי Google, כולל תנועה. לא כולל זמן עצירה בכל כתובת. {stale ? 'שינית כתובות אחרי הסידור, אז הזמנים והקו במפה לא מעודכנים. לחץ "סדר מחדש" לעדכון. ' : ''}{done ? `${done} מתוך ${plan.stops.length} טופלו: ${counts.delivered} נמסרו, ${counts.pasted} הדבקות, ${counts.failed} נכשלו.` : ''}</p>
       <div className="route-tools">
         <button type="button" className="ghost" onClick={() => setShowMap((v) => !v)}>{showMap ? 'הסתר מפה' : 'הצג מפה'}</button>
         <button type="button" className="ghost" onClick={onReport}>ייצא דוח</button>
@@ -56,11 +65,26 @@ export function RouteView({ plan, onDelivery, onReoptimize, onRemove, onReport, 
             <li key={s.id} className={s.delivery}>
               <div className="num">{i + 1}</div>
               <div className="grow">
-                <div className="stop-head">
-                  <span>{s.address ?? s.input}</span>
-                  <button type="button" className="icon" aria-label="הסר מהמסלול" title="הסר מהמסלול"
-                    onClick={() => { if (confirm(`להסיר את ${s.address ?? s.input} מהמסלול?`)) onRemove(s.id); }}>✕</button>
-                </div>
+                {editing?.id === s.id ? (
+                  <div className="edit-box">
+                    <input value={editing.text} autoFocus aria-label="כתובת מתוקנת" disabled={editing.busy}
+                      onChange={(e) => setEditing({ ...editing, text: e.target.value, error: '' })}
+                      onKeyDown={(e) => { if (e.key === 'Enter') saveEdit(); }} />
+                    {editing.error && <p className="bad small">{editing.error}</p>}
+                    <div className="fail-actions">
+                      <button type="button" className="ok-btn" onClick={saveEdit} disabled={editing.busy || !editing.text.trim()}>{editing.busy ? 'בודק...' : 'שמור כתובת'}</button>
+                      <button type="button" className="ghost" onClick={() => setEditing(null)} disabled={editing.busy}>ביטול</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="stop-head">
+                    <span>{s.address ?? s.input}</span>
+                    <button type="button" className="icon" aria-label="ערוך כתובת" title="ערוך כתובת"
+                      onClick={() => setEditing({ id: s.id, text: s.address?.replace(/,\s*ישראל$/, '') ?? s.input, error: '', busy: false })}>✎</button>
+                    <button type="button" className="icon" aria-label="הסר מהמסלול" title="הסר מהמסלול"
+                      onClick={() => { if (confirm(`להסיר את ${s.address ?? s.input} מהמסלול?`)) onRemove(s.id); }}>✕</button>
+                  </div>
+                )}
                 <div className="muted small">
                   {leg && `${fmtDuration(leg.durationSec)} · ${fmtKm(leg.distanceM)}`}
                   {addedAt.get(s.id) !== i + 1 && ` · היה מספר ${addedAt.get(s.id)} ברשימה`}

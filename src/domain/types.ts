@@ -46,6 +46,8 @@ export interface Optimized {
   before?: { totalDurationSec: number; totalDistanceM: number };
   polyline?: string;
   at: number;
+  /** A stop was edited or removed after sorting, so the times and the line on the map are out of date. */
+  stale?: boolean;
 }
 
 export interface Plan {
