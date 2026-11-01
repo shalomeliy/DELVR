@@ -95,3 +95,20 @@ export function weeklyCsv(days: string[], logs: DayLog[]): string {
     ...detailRows(all, true),
   ]);
 }
+
+export interface RouteRow { address: string; status: Outcome | 'todo'; reason?: string; at?: number }
+
+/** The current route in one file: every stop in driving order with its status, and the totals on top. */
+export function routeCsv(rows: RouteRow[], now = Date.now()): string {
+  const done = rows.filter((r): r is RouteRow & { status: Outcome } => r.status !== 'todo');
+  const s = summarize(done.map((r) => ({ stopId: '', address: r.address, outcome: r.status, at: r.at ?? now })));
+  return csv([
+    ['דוח מסלול', fmtDay(dayKey(now)), fmtTime(now)],
+    [],
+    ['סה"כ עצירות', 'נמסר', 'הדבקה', 'נכשל', 'לא טופל'],
+    [rows.length, s.delivered, s.pasted, s.failed, rows.length - done.length],
+    [],
+    ['#', 'כתובת', 'סטטוס', 'סיבת כישלון', 'שעה'],
+    ...rows.map((r, i) => [i + 1, r.address, r.status === 'todo' ? 'לא טופל' : OUTCOME_LABEL[r.status], r.reason ?? '', r.at ? fmtTime(r.at) : '']),
+  ]);
+}

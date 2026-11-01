@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { addStops, canOptimize, removeFromRoute, emptyPlan, endModeOf, findDuplicate, removeStop, startCity, stopsFromText, updateStop } from './domain/plan';
-import { dayKey, withEntry, withoutEntry } from './domain/history';
+import { addStops, canOptimize, orderedStops, removeFromRoute, emptyPlan, endModeOf, findDuplicate, removeStop, startCity, stopsFromText, updateStop } from './domain/plan';
+import { dayKey, routeCsv, withEntry, withoutEntry } from './domain/history';
 import { parseTranscript } from './domain/parser.js';
 import type { Place, Plan, Stop } from './domain/types';
 import { MAX_STOPS } from './domain/types';
 import { geocode, reverseGeocode } from './services/geocode';
-import { buildReport, logError, logInfo, shareReport } from './services/log';
+import { buildReport, logError, logInfo, shareFile, shareReport } from './services/log';
 import { hasMapsKey } from './services/maps';
 import { optimizePlan } from './services/optimize';
 import { isFresh, loadPlan, recall, remember, savePlan, updateDay } from './store/db';
@@ -185,6 +185,17 @@ export default function App() {
     }
   };
 
+  // One tap: every stop of the current route with its status and failure reason, and the totals.
+  const exportRoute = async () => {
+    const p = planRef.current ?? plan;
+    const rows = orderedStops(p).map((s) => ({ address: s.address ?? s.input, status: s.delivery, reason: s.failReason, at: s.handledAt }));
+    const now = Date.now();
+    const how = await shareFile(routeCsv(rows, now), `delvr-route-${dayKey(now)}.csv`, 'text/csv', 'דוח מסלול');
+    logInfo('report_route', { stops: rows.length, how });
+    if (how === 'downloaded') setNotice('הדוח ירד לטלפון (בתיקיית ההורדות). אפשר לפתוח אותו ב-Excel או לצרף בוואטסאפ');
+    if (how === 'copied') setNotice('הדוח הועתק. הדבק אותו בוואטסאפ או במייל');
+  };
+
   const reset = () => { if (confirm('למחוק את כל העצירות ולהתחיל מסלול חדש?')) setPlan((p) => ({ ...emptyPlan(), start: p.start, end: p.end })); };
 
   const gate = canOptimize(plan);
@@ -208,7 +219,7 @@ export default function App() {
 
       {plan.optimized ? (
         <RouteView plan={plan} busy={optimizing} onReoptimize={optimize}
-          onDelivery={onDelivery}
+          onDelivery={onDelivery} onReport={exportRoute}
           onRemove={(id) => { logInfo('route_remove', id); setPlan((p) => removeFromRoute(p, id)); }} />
       ) : null}
 

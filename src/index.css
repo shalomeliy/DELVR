@@ -94,3 +94,4 @@ ol.route li.pasted { opacity: .6; }
 .stop-head { display: flex; align-items: flex-start; gap: 4px; }
 .stop-head span { flex: 1; }
 .stop-head .icon { min-height: 32px; min-width: 32px; }
+.route-tools { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
