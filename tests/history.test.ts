@@ -49,9 +49,9 @@ describe('reports', () => {
       { day: '2026-10-25', entries: [entry('1', 'delivered'), entry('2', 'pasted')] },
       { day: '2026-10-27', entries: [entry('3', 'failed', '2026-10-27', 'כתובת שגויה')] },
     ]);
-    expect(text).toContain('25/10/2026,ראשון,2,1,1,0');
+    expect(text).toContain('25/10/2026,ראשון,2,1,1,0,25');
     expect(text).toContain('26/10/2026,שני,0,0,0,0');
-    expect(text).toContain('"סה""כ שבועי",,3,1,1,1');
+    expect(text).toContain('"סה""כ שבועי",,3,1,1,1,25');
     expect(text).toContain('כתובת שגויה');
   });
 });
@@ -68,6 +68,9 @@ describe('route report', () => {
     expect(text).toContain('3,"הרצל 3, יבנה",נכשל,אין מענה,11:00');
     expect(text).toContain('4,"הרצל 4, יבנה",לא טופל,,');
     expect(text).toContain('לא התחיל,טרם הסתיים,');
+    expect(text).toContain('מסירות,1,15,15');
+    expect(text).toContain('הדבקות,1,10,10');
+    expect(text).toContain('"סה""כ לתשלום (₪)",,,25');
   });
 
   it('shows the actual start, the end at the last status and the time between', () => {
