@@ -98,3 +98,4 @@ ol.route li.pasted { opacity: .6; }
 .edit-box { margin-top: 4px; }
 .archive-row { width: 100%; flex-direction: column; align-items: flex-start; gap: 2px; text-align: start; border: none; background: none; padding: 4px 0; }
 .archive-detail { margin-top: 6px; }
+.earn { margin: 8px 0 0; }

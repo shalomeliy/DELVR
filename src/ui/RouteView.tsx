@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { earnings, fmtShekel } from '../domain/history';
 import { endModeOf, fmtClock, fmtDuration, fmtKm, orderedStops } from '../domain/plan';
 import type { Plan, Stop } from '../domain/types';
 import { googleMapsUrl, wazeUrl } from '../services/navigation';
@@ -54,7 +55,7 @@ export function RouteView({ plan, onDelivery, onReoptimize, onRemove, onEdit, on
         <div><b>{fmtKm(opt.totalDistanceM)}</b><span>מרחק</span></div>
         <div><b>{fmtClock(opt.at + opt.totalDurationSec * 1000)}</b><span>סיום משוער</span></div>
       </div>
-      <p className="muted small">זמני נסיעה לפי Google, כולל תנועה. לא כולל זמן עצירה בכל כתובת. {stale ? 'שינית כתובות אחרי הסידור, אז הזמנים והקו במפה לא מעודכנים. לחץ "סדר מחדש" לעדכון. ' : ''}{done ? `${done} מתוך ${plan.stops.length} טופלו: ${counts.delivered} נמסרו, ${counts.pasted} הדבקות, ${counts.failed} נכשלו.` : ''}</p>
+      <p className="muted small">זמני נסיעה לפי Google, כולל תנועה. לא כולל זמן עצירה בכל כתובת. {stale ? 'שינית כתובות אחרי הסידור, אז הזמנים והקו במפה לא מעודכנים. לחץ "סדר מחדש" לעדכון. ' : ''}{done ? `${done} מתוך ${plan.stops.length} טופלו: ${counts.delivered} נמסרו, ${counts.pasted} הדבקות, ${counts.failed} נכשלו. לתשלום עד עכשיו: ${fmtShekel(earnings(counts))}.` : ''}</p>
       <div className="route-tools">
         <button type="button" className="ghost" onClick={() => setShowMap((v) => !v)}>{showMap ? 'הסתר מפה' : 'הצג מפה'}</button>
         <button type="button" className="ghost" onClick={onReport}>ייצא דוח</button>

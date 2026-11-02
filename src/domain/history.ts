@@ -58,6 +58,19 @@ export function summarize(entries: HistoryEntry[]): Summary {
   return s;
 }
 
+/** What the courier is paid per stop, in shekels (user, 2026-11-02). A failed stop pays nothing. */
+export const PRICE: Record<Outcome, number> = { delivered: 15, pasted: 10, failed: 0 };
+export const earnings = (s: Pick<Summary, Outcome>) => s.delivered * PRICE.delivered + s.pasted * PRICE.pasted + s.failed * PRICE.failed;
+export const fmtShekel = (n: number) => `${n.toLocaleString('he-IL')} ₪`;
+
+const payRows = (s: Summary) => [
+  ['תשלום', 'כמות', 'מחיר ליחידה', 'סכום'],
+  ['מסירות', s.delivered, PRICE.delivered, s.delivered * PRICE.delivered],
+  ['הדבקות', s.pasted, PRICE.pasted, s.pasted * PRICE.pasted],
+  ['נכשלו', s.failed, PRICE.failed, s.failed * PRICE.failed],
+  ['סה"כ לתשלום (₪)', '', '', earnings(s)],
+];
+
 export const fmtTime = (ms: number) => { const d = new Date(ms); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
 
 // Excel opens a UTF-8 CSV in Hebrew correctly only with the byte-order mark in front.
@@ -75,6 +88,8 @@ export function dailyCsv(day: string, entries: HistoryEntry[]): string {
     ['סה"כ', 'נמסר', 'הדבקה', 'נכשל'],
     [s.total, s.delivered, s.pasted, s.failed],
     [],
+    ...payRows(s),
+    [],
     ['שעה', 'כתובת', 'תוצאה', 'סיבת כישלון'],
     ...detailRows(entries, false),
   ]);
@@ -87,9 +102,11 @@ export function weeklyCsv(days: string[], logs: DayLog[]): string {
   return csv([
     ['דוח שבועי', `${fmtDay(days[0])} עד ${fmtDay(days[days.length - 1])}`],
     [],
-    ['תאריך', 'יום', 'סה"כ', 'נמסר', 'הדבקה', 'נכשל'],
-    ...days.map((d) => { const s = summarize(byDay.get(d) ?? []); return [fmtDay(d), WEEKDAYS[weekdayOf(d)], s.total, s.delivered, s.pasted, s.failed]; }),
-    ['סה"כ שבועי', '', t.total, t.delivered, t.pasted, t.failed],
+    ['תאריך', 'יום', 'סה"כ', 'נמסר', 'הדבקה', 'נכשל', 'לתשלום (₪)'],
+    ...days.map((d) => { const s = summarize(byDay.get(d) ?? []); return [fmtDay(d), WEEKDAYS[weekdayOf(d)], s.total, s.delivered, s.pasted, s.failed, earnings(s)]; }),
+    ['סה"כ שבועי', '', t.total, t.delivered, t.pasted, t.failed, earnings(t)],
+    [],
+    ...payRows(t),
     [],
     ['תאריך', 'שעה', 'כתובת', 'תוצאה', 'סיבת כישלון'],
     ...detailRows(all, true),
@@ -98,13 +115,13 @@ export function weeklyCsv(days: string[], logs: DayLog[]): string {
 
 export interface RouteRow { address: string; status: Outcome | 'todo'; reason?: string; at?: number }
 
-/** The current route in one file: every stop in driving order with its status, and the totals on top. */
 /** Actual end: when the last stop got its status. Only once every stop has one. */
 export const routeEndedAt = (rows: RouteRow[]) =>
   rows.length && rows.every((r) => r.status !== 'todo' && r.at) ? Math.max(...rows.map((r) => r.at!)) : undefined;
 
 const fmtSpan = (ms: number) => { const m = Math.round(ms / 60000); return `${Math.floor(m / 60)}:${pad(m % 60)}`; };
 
+/** The current route in one file: every stop in driving order with its status, and the totals on top. */
 export function routeCsv(rows: RouteRow[], now = Date.now(), startedAt?: number): string {
   const done = rows.filter((r): r is RouteRow & { status: Outcome } => r.status !== 'todo');
   const endedAt = routeEndedAt(rows);
@@ -117,6 +134,8 @@ export function routeCsv(rows: RouteRow[], now = Date.now(), startedAt?: number)
     [],
     ['סה"כ עצירות', 'נמסר', 'הדבקה', 'נכשל', 'לא טופל'],
     [rows.length, s.delivered, s.pasted, s.failed, rows.length - done.length],
+    [],
+    ...payRows(s),
     [],
     ['#', 'כתובת', 'סטטוס', 'סיבת כישלון', 'שעה'],
     ...rows.map((r, i) => [i + 1, r.address, r.status === 'todo' ? 'לא טופל' : OUTCOME_LABEL[r.status], r.reason ?? '', r.at ? fmtTime(r.at) : '']),

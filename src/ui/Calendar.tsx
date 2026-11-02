@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { dailyCsv, dayKey, fmtDay, monthGrid, summarize, weekdayOf, weekOf, weeklyCsv, WEEKDAYS, type DayLog } from '../domain/history';
+import { dailyCsv, earnings, fmtShekel, PRICE, dayKey, fmtDay, monthGrid, summarize, weekdayOf, weekOf, weeklyCsv, WEEKDAYS, type DayLog } from '../domain/history';
 import { logInfo, shareFile } from '../services/log';
 import { loadDays } from '../store/db';
 
@@ -71,6 +71,7 @@ export function Calendar({ onClose, onNotice }: Props) {
           <div><b className="warn">{sum.pasted}</b><span>הדבקה</span></div>
           <div><b className="bad">{sum.failed}</b><span>נכשל</span></div>
         </div>
+        {sum.total > 0 && <p className="earn">לתשלום: <b>{fmtShekel(earnings(sum))}</b> <span className="muted small">({sum.delivered} × {PRICE.delivered} + {sum.pasted} × {PRICE.pasted})</span></p>}
         {!sum.total && <p className="muted small">אין משלוחים ביום הזה.</p>}
         {failed.length > 0 && (
           <>
