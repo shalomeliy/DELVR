@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { addStops, canOptimize, editInRoute, orderedStops, removeFromRoute, emptyPlan, endModeOf, findDuplicate, removeStop, startCity, stopsFromText, updateStop } from './domain/plan';
+import { archiveOf } from './domain/archive';
 import { dayKey, routeCsv, withEntry, withoutEntry } from './domain/history';
 import { parseTranscript } from './domain/parser.js';
 import type { Place, Plan, Stop } from './domain/types';
@@ -8,8 +9,9 @@ import { geocode, reverseGeocode } from './services/geocode';
 import { buildReport, logError, logInfo, shareFile, shareReport } from './services/log';
 import { hasMapsKey } from './services/maps';
 import { optimizePlan } from './services/optimize';
-import { isFresh, loadPlan, recall, remember, savePlan, updateDay } from './store/db';
+import { isFresh, loadPlan, recall, remember, savePlan, saveRoute, updateDay } from './store/db';
 import { AddStops } from './ui/AddStops';
+import { Archive } from './ui/Archive';
 import { Calendar } from './ui/Calendar';
 import { FixList } from './ui/FixList';
 import { RouteView } from './ui/RouteView';
@@ -24,7 +26,7 @@ export default function App() {
   const [optimizing, setOptimizing] = useState(false);
   const [sortError, setSortError] = useState('');
   const planRef = useRef<Plan | null>(null);
-  const [showCalendar, setShowCalendar] = useState(false);
+  const [view, setView] = useState<'route' | 'calendar' | 'archive'>('route');
 
   const setPlan = useCallback((fn: (p: Plan) => Plan) => {
     setPlanState((prev) => {
@@ -214,7 +216,14 @@ export default function App() {
     if (how === 'copied') setNotice('הדוח הועתק. הדבק אותו בוואטסאפ או במייל');
   };
 
-  const reset = () => { if (confirm('למחוק את כל העצירות ולהתחיל מסלול חדש?')) setPlan((p) => ({ ...emptyPlan(), start: p.start, end: p.end })); };
+  // What was done on the old route goes to the archive first; the daily history already has every status.
+  const reset = async () => {
+    const old = planRef.current ?? plan;
+    const snapshot = archiveOf(old);
+    if (!confirm(snapshot ? 'המסלול הנוכחי יישמר בארכיון. להתחיל מסלול חדש?' : 'למחוק את כל העצירות ולהתחיל מסלול חדש?')) return;
+    if (snapshot) { await saveRoute(snapshot); logInfo('route_archived', { stops: snapshot.stops.length }); }
+    setPlan((p) => ({ ...emptyPlan(), start: p.start, end: p.end }));
+  };
 
   const gate = canOptimize(plan);
   const needsFix = plan.stops.filter((s) => s.verify === 'needs_fix' && s.delivery === 'todo');
@@ -224,16 +233,19 @@ export default function App() {
       <header className="top">
         <h1>Delvr</h1>
         <div>
-          <button type="button" className="link" onClick={() => setShowCalendar((v) => !v)}>{showCalendar ? 'מסלול' : 'יומן'}</button>
+          {view !== 'route' && <button type="button" className="link" onClick={() => setView('route')}>מסלול</button>}
+          {view !== 'calendar' && <button type="button" className="link" onClick={() => setView('calendar')}>יומן</button>}
+          {view !== 'archive' && <button type="button" className="link" onClick={() => setView('archive')}>ארכיון</button>}
           <button type="button" className="link" onClick={sendLogs}>שלח לוגים</button>
-          {plan.stops.length > 0 && !showCalendar && <button type="button" className="link" onClick={reset}>מסלול חדש</button>}
+          {plan.stops.length > 0 && view === 'route' && <button type="button" className="link" onClick={reset}>מסלול חדש</button>}
         </div>
       </header>
       {!hasMapsKey() && <div className="banner bad">חסר מפתח Google. הוסף VITE_GOOGLE_MAPS_KEY לקובץ .env.local</div>}
       {error && <div className="banner bad" role="alert">{error}</div>}
       {notice && <div className="banner warn">{notice}</div>}
 
-      {showCalendar ? <Calendar onClose={() => setShowCalendar(false)} onNotice={setNotice} /> : <>
+      {view === 'calendar' ? <Calendar onClose={() => setView('route')} onNotice={setNotice} />
+        : view === 'archive' ? <Archive onClose={() => setView('route')} onNotice={setNotice} /> : <>
 
       {plan.optimized ? (
         <RouteView plan={plan} busy={optimizing} onReoptimize={optimize}

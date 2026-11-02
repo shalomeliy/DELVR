@@ -1,9 +1,10 @@
 // IndexedDB on the device: the current plan, the courier's corrected addresses and the per-day history. No server database in v1.
+import type { ArchivedRoute } from '../domain/archive';
 import type { DayLog } from '../domain/history';
 import type { LatLng, Plan } from '../domain/types';
 
-const DB = 'delvr', VERSION = 2;
-const PLAN = 'plan', MEMORY = 'addressMemory', HISTORY = 'history';
+const DB = 'delvr', VERSION = 3;
+const PLAN = 'plan', MEMORY = 'addressMemory', HISTORY = 'history', ROUTES = 'routes';
 
 /** at: when Google last confirmed it. Google's terms allow keeping coordinates for up to 30 days. */
 export interface Remembered { address: string; location: LatLng; at?: number }
@@ -18,7 +19,7 @@ function open(): Promise<IDBDatabase> {
     const req = indexedDB.open(DB, VERSION);
     req.onupgradeneeded = () => {
       const db = req.result;
-      for (const name of [PLAN, MEMORY, HISTORY]) if (!db.objectStoreNames.contains(name)) db.createObjectStore(name);
+      for (const name of [PLAN, MEMORY, HISTORY, ROUTES]) if (!db.objectStoreNames.contains(name)) db.createObjectStore(name);
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
@@ -63,3 +64,6 @@ export async function updateDay(day: string, fn: (log: DayLog | undefined) => Da
     });
   } catch { /* storage blocked: the route still works, only the history misses this tap */ }
 }
+
+export const saveRoute = (r: ArchivedRoute) => tx(ROUTES, 'readwrite', (s) => s.put(r, r.id)).catch(() => undefined);
+export const loadRoutes = () => tx<ArchivedRoute[]>(ROUTES, 'readonly', (s) => s.getAll()).catch(() => [] as ArchivedRoute[]);

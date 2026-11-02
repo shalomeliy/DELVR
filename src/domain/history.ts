@@ -58,7 +58,7 @@ export function summarize(entries: HistoryEntry[]): Summary {
   return s;
 }
 
-const fmtTime = (ms: number) => { const d = new Date(ms); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+export const fmtTime = (ms: number) => { const d = new Date(ms); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
 
 // Excel opens a UTF-8 CSV in Hebrew correctly only with the byte-order mark in front.
 const cell = (v: string | number) => { const s = String(v); return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
