@@ -15,8 +15,8 @@ describe('diagnostic log', () => {
   beforeEach(() => clearLog());
 
   it('never contains the Google key', async () => {
-    logError('maps_script_failed', { src: 'https://maps.googleapis.com/maps/api/js?key=AIzaSyDxPQdexpqqBGhjH8lxKiBvQrwhZMiadao&language=he' });
-    logInfo('note', 'AIzaSyDxPQdexpqqBGhjH8lxKiBvQrwhZMiadao');
+    logError('maps_script_failed', { src: 'https://maps.googleapis.com/maps/api/js?key=AIzaSy_FAKE_TEST_KEY_not_a_real_one00&language=he' });
+    logInfo('note', 'AIzaSy_FAKE_TEST_KEY_not_a_real_one00');
     const report = await buildReport({});
     expect(report).not.toMatch(/AIzaSy/);
     expect(report).toContain('[key]');
