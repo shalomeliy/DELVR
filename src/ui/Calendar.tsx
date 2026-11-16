@@ -29,13 +29,13 @@ export function Calendar({ onClose, onNotice }: Props) {
     if (how === 'copied') onNotice('הדוח הועתק. הדבק אותו בוואטסאפ או במייל');
   };
   const exportDay = async () => {
-    const how = await shareFile(dailyCsv(selected, entries), `delvr-day-${selected}.csv`, 'text/csv', `דוח יומי ${fmtDay(selected)}`);
+    const how = await shareFile(dailyCsv(selected, entries), `passit-day-${selected}.csv`, 'text/csv', `דוח יומי ${fmtDay(selected)}`);
     logInfo('report_day', { day: selected, how }); told(how);
   };
   const exportWeek = async () => {
     const week = weekOf(selected);
     const weekLogs = await loadDays(week[0], week[6]);
-    const how = await shareFile(weeklyCsv(week, weekLogs), `delvr-week-${week[0]}.csv`, 'text/csv', `דוח שבועי ${fmtDay(week[0])}-${fmtDay(week[6])}`);
+    const how = await shareFile(weeklyCsv(week, weekLogs), `passit-week-${week[0]}.csv`, 'text/csv', `דוח שבועי ${fmtDay(week[0])}-${fmtDay(week[6])}`);
     logInfo('report_week', { from: week[0], how }); told(how);
   };
 

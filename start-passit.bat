@@ -14,6 +14,6 @@ if not exist node_modules (
   )
 )
 echo.
-echo Delvr is starting at http://localhost:5173 - close this window to stop it.
+echo PassIT is starting at http://localhost:5173 - close this window to stop it.
 call npm run dev -- --port 5173 --strictPort --open
 pause

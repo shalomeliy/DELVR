@@ -210,7 +210,7 @@ export default function App() {
     const p = planRef.current ?? plan;
     const rows = orderedStops(p).map((s) => ({ address: s.address ?? s.input, status: s.delivery, reason: s.failReason, at: s.handledAt }));
     const now = Date.now();
-    const how = await shareFile(routeCsv(rows, now, p.startedAt), `delvr-route-${dayKey(now)}.csv`, 'text/csv', 'דוח מסלול');
+    const how = await shareFile(routeCsv(rows, now, p.startedAt), `passit-route-${dayKey(now)}.csv`, 'text/csv', 'דוח מסלול');
     logInfo('report_route', { stops: rows.length, how });
     if (how === 'downloaded') setNotice('הדוח ירד לטלפון (בתיקיית ההורדות). אפשר לפתוח אותו ב-Excel או לצרף בוואטסאפ');
     if (how === 'copied') setNotice('הדוח הועתק. הדבק אותו בוואטסאפ או במייל');
@@ -231,7 +231,7 @@ export default function App() {
   return (
     <main className="app">
       <header className="top">
-        <h1>Delvr</h1>
+        <h1>PassIT</h1>
         <div>
           {view !== 'route' && <button type="button" className="link" onClick={() => setView('route')}>מסלול</button>}
           {view !== 'calendar' && <button type="button" className="link" onClick={() => setView('calendar')}>יומן</button>}

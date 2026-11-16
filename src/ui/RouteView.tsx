@@ -19,7 +19,7 @@ interface Props {
   busy: boolean;
 }
 
-const MAP_KEY = 'delvr_map';
+const MAP_KEY = 'delvr_map'; // old prefix kept so the saved map setting survives the rename
 const STATUS = { delivered: '✓ נמסר', pasted: '✓ הדבקה', failed: '✕ נכשל' } as const;
 
 export function RouteView({ plan, onDelivery, onReoptimize, onRemove, onEdit, onReport, onNavigate, busy }: Props) {

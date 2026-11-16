@@ -3,6 +3,7 @@ import type { ArchivedRoute } from '../domain/archive';
 import type { DayLog } from '../domain/history';
 import type { LatLng, Plan } from '../domain/types';
 
+// Storage names keep the old 'delvr' prefix on purpose: renaming them would lose saved routes, history and archive.
 const DB = 'delvr', VERSION = 3;
 const PLAN = 'plan', MEMORY = 'addressMemory', HISTORY = 'history', ROUTES = 'routes';
 
