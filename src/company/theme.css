@@ -1,12 +1,94 @@
 /* Company mode theme, from the approved design. Scoped under .co so the solo app is untouched. */
-@import url('https://fonts.googleapis.com/css2?family=Rubik:wght@500;700&family=Heebo:wght@400;500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Rubik:wght@500;700;800&family=Heebo:wght@400;500;600;700&display=swap');
 
 .co {
-  --bg: #0A0E17; --panel: #121826; --line: #1F2838; --text: #EEF2F8; --muted: #8B97AD;
-  --live: #C8F560; --ok: #34D399; --paste: #FBBF24; --fail: #FB7185; --todo: #243047;
-  min-height: 100dvh; margin: 0; padding: 16px; box-sizing: border-box;
-  background: var(--bg); color: var(--text); font-family: Heebo, system-ui, sans-serif;
+  --bg: #0A0E17; --panel: #121826; --panel2: #0F1522; --line: #1F2838; --line2: #2B3850;
+  --text: #EEF2F8; --muted: #8B97AD; --live: #C8F560; --live-hover: #E2FF9E;
+  --ok: #34D399; --paste: #FBBF24; --fail: #FB7185; --todo: #243047;
+  min-height: 100dvh; padding: 20px 16px 120px; box-sizing: border-box; color-scheme: dark;
+  background: var(--bg); color: var(--text); font-family: Heebo, system-ui, sans-serif; font-size: 16px; line-height: 1.5;
 }
-.co-title { font-family: Rubik, Heebo, sans-serif; font-weight: 700; font-size: 24px; margin: 0 0 12px; }
-.co-live { color: var(--live); }
+.co * { box-sizing: border-box; }
+.co h1, .co h2, .co h3 { font-family: Rubik, Heebo, sans-serif; margin: 0; color: var(--text); letter-spacing: -.3px; }
+.co h2 { font-size: 18px; font-weight: 700; }
+.co a { color: var(--live); }
+.co-wrap { max-width: 1120px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
 .co-muted { color: var(--muted); }
+.co-small { font-size: 13px; }
+.co-live { color: var(--live); }
+
+/* header */
+.co-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px; }
+.co-brand { display: flex; align-items: center; gap: 12px; }
+.co-logo { width: 44px; height: 44px; border-radius: 14px; background: var(--live); color: var(--bg); display: flex;
+  align-items: center; justify-content: center; font: 800 20px Rubik, sans-serif; flex: none; }
+.co-brand b { font: 800 24px Rubik, sans-serif; letter-spacing: -.5px; display: block; line-height: 1.1; }
+.co-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+
+/* controls */
+.co button, .co .co-btn { font: 500 15px Heebo, sans-serif; min-height: 44px; padding: 0 16px; border-radius: 12px;
+  background: var(--panel); color: var(--text); border: 1px solid var(--line); cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none; }
+.co button:hover, .co .co-btn:hover { border-color: var(--line2); }
+.co .co-primary { background: var(--live); color: var(--bg); border: 0; font: 700 15px Rubik, sans-serif; }
+.co .co-primary:hover { background: var(--live-hover); }
+.co .co-ghost { background: transparent; color: var(--live); border-color: var(--line2); }
+.co .co-quiet { background: transparent; border-color: transparent; color: var(--muted); padding: 0 10px; }
+.co .co-quiet:hover { color: var(--text); border-color: transparent; }
+.co .co-danger { color: var(--fail); }
+.co button:disabled { opacity: .5; cursor: not-allowed; }
+.co button:focus-visible, .co input:focus-visible, .co a:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
+.co .co-wide { width: 100%; }
+.co label { display: block; font-size: 14px; color: var(--muted); margin-bottom: 6px; }
+.co input { font: 400 16px Heebo, sans-serif; color: var(--text); background: var(--panel2); border: 1px solid var(--line);
+  border-radius: 12px; padding: 12px 14px; width: 100%; min-height: 48px; }
+.co input::placeholder { color: #5B6780; }
+.co .co-field { margin-bottom: 14px; }
+
+/* surfaces */
+.co-card { background: var(--panel); border: 1px solid var(--line); border-radius: 24px; padding: 18px; }
+.co-card-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 12px; }
+.co-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (min-width: 900px) { .co-grid { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); } }
+.co-auth { width: 100%; max-width: 420px; margin: 8vh auto 0; }
+.co-auth h1 { font-size: 28px; font-weight: 800; margin-bottom: 4px; }
+.co-tabs { display: flex; background: var(--panel2); border: 1px solid var(--line); border-radius: 14px; padding: 4px; margin: 18px 0; }
+.co .co-tabs button { flex: 1; border: 0; background: transparent; color: var(--muted); min-height: 40px; }
+.co .co-tabs button[aria-pressed='true'] { background: var(--panel); color: var(--text); box-shadow: 0 0 0 1px var(--line2); }
+.co-msg { border-radius: 12px; padding: 12px 14px; font-size: 15px; margin-bottom: 14px; }
+.co-msg.bad { background: rgba(251, 113, 133, .12); color: #FECDD3; border: 1px solid rgba(251, 113, 133, .35); }
+.co-msg.ok { background: rgba(200, 245, 96, .1); color: #E2FF9E; border: 1px solid rgba(200, 245, 96, .3); }
+
+/* people */
+.co-list { display: flex; flex-direction: column; gap: 10px; list-style: none; margin: 0; padding: 0; }
+.co-person { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 16px; background: var(--panel2);
+  border: 1px solid var(--line); flex-wrap: wrap; }
+.co-ring { width: 46px; height: 46px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex: none; }
+.co-ring span { width: 38px; height: 38px; border-radius: 50%; background: var(--panel); display: flex; align-items: center;
+  justify-content: center; font: 700 15px Rubik, sans-serif; }
+.co-person-main { flex: 1; min-width: 120px; display: flex; flex-direction: column; }
+.co-person-main b { font-weight: 600; }
+.co-person-acts { display: flex; gap: 6px; flex-wrap: wrap; }
+.co .co-person-acts button, .co .co-person-acts .co-btn { min-height: 40px; padding: 0 12px; font-size: 14px; }
+.co-pill { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+.co-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+.co-dot.live { background: var(--live); } .co-dot.warn { background: var(--paste); } .co-dot.bad { background: var(--fail); }
+.co-empty { text-align: center; padding: 28px 12px; color: var(--muted); border: 1px dashed var(--line2); border-radius: 16px; }
+
+/* invite sheet: bottom sheet on a phone, centred dialog on a desktop */
+.co-scrim { position: fixed; inset: 0; background: rgba(5, 8, 14, .72); display: flex; align-items: flex-end; justify-content: center; z-index: 20; }
+.co-sheet { width: 100%; max-width: 480px; background: var(--panel); border: 1px solid var(--line2); border-radius: 24px 24px 0 0;
+  padding: 22px 18px calc(22px + env(safe-area-inset-bottom)); }
+@media (min-width: 640px) { .co-scrim { align-items: center; } .co-sheet { border-radius: 24px; } }
+.co-sheet h2 { margin-bottom: 4px; }
+.co-linkbox { font: 500 14px ui-monospace, monospace; direction: ltr; text-align: left; background: var(--panel2); border: 1px solid var(--line);
+  border-radius: 12px; padding: 12px; word-break: break-all; margin: 14px 0; color: var(--live); }
+.co-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.co-row > * { flex: 1 1 140px; }
+
+/* phone: the main action stays at the bottom of the screen */
+.co-dock { position: fixed; inset: auto 0 0 0; padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+  background: linear-gradient(transparent, var(--bg) 35%); display: flex; z-index: 10; }
+.co-dock > * { flex: 1; min-height: 52px; }
+@media (min-width: 900px) { .co-dock { display: none; } }
+@media (max-width: 899px) { .co-desk { display: none !important; } }
