@@ -51,6 +51,7 @@ export function Settings({ view, canReset, routeSorted, onView, onReset, onLogs 
             <div className="muted small">{vehicle === 'scooter' ? 'בלי כבישים מהירים, והמסלול הקצר בק"מ מנצח.' : 'המסלול המהיר בזמן מנצח.'}</div>
             {routeSorted && <div className="muted small">השינוי ייכנס לתוקף בסידור הבא של המסלול.</div>}
           </div>
+          <div className="menu-sec muted small">PassIT גרסה {import.meta.env.VITE_VERSION} ({import.meta.env.VITE_BUILD ?? 'dev'})</div>
         </div>
       )}
     </div>

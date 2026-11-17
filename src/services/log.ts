@@ -56,7 +56,7 @@ async function permission(name: string) {
 /** Everything useful for debugging, as one text report. */
 export async function buildReport(extra: Record<string, unknown>): Promise<string> {
   const device = {
-    app: 'PassIT', build: import.meta.env.VITE_BUILD ?? 'dev', url: location.origin,
+    app: 'PassIT', version: import.meta.env.VITE_VERSION, build: import.meta.env.VITE_BUILD ?? 'dev', url: location.origin,
     userAgent: navigator.userAgent, language: navigator.language, online: navigator.onLine,
     screen: `${screen.width}x${screen.height} @${devicePixelRatio}`,
     standalone: matchMedia('(display-mode: standalone)').matches,
