@@ -2,6 +2,7 @@
 import type { ArchivedRoute } from '../domain/archive';
 import type { DayLog } from '../domain/history';
 import type { LatLng, Plan } from '../domain/types';
+import { newestPlan, normalizePlan, readBackup, within, writeBackup } from './persist';
 
 // Storage names keep the old 'delvr' prefix on purpose: renaming them would lose saved routes, history and archive.
 const DB = 'delvr', VERSION = 3;
@@ -22,8 +23,13 @@ function open(): Promise<IDBDatabase> {
       const db = req.result;
       for (const name of [PLAN, MEMORY, HISTORY, ROUTES]) if (!db.objectStoreNames.contains(name)) db.createObjectStore(name);
     };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
+    req.onsuccess = () => {
+      const db = req.result;
+      // A newer version of the app in another tab needs this connection closed to upgrade the database.
+      db.onversionchange = () => { db.close(); dbp = null; };
+      resolve(db);
+    };
+    req.onerror = () => { dbp = null; reject(req.error); };
   });
   return dbp;
 }
@@ -40,8 +46,19 @@ async function tx<T>(store: string, mode: IDBTransactionMode, fn: (s: IDBObjectS
 /** "הרצל 3, רחובות" and "הרצל  3 רחובות" are the same address for memory purposes. */
 export const memoryKey = (input: string) => input.replace(/[,.\-־'"׳״]/g, ' ').replace(/\s+/g, ' ').trim();
 
-export const loadPlan = () => tx<Plan | undefined>(PLAN, 'readonly', (s) => s.get('current')).catch(() => undefined);
-export const savePlan = (plan: Plan) => tx(PLAN, 'readwrite', (s) => s.put(plan, 'current')).catch(() => undefined);
+/** The route in progress: whichever of the IndexedDB copy and the localStorage backup was saved last. */
+export async function loadPlan(): Promise<Plan | undefined> {
+  const stored = await within(tx<unknown>(PLAN, 'readonly', (s) => s.get('current')).catch(() => undefined), 3000);
+  const plan = newestPlan(normalizePlan(stored), readBackup());
+  // A route saved before the backup existed gets one right away.
+  if (plan) writeBackup(plan);
+  return plan;
+}
+export const savePlan = (plan: Plan) => {
+  const stamped = { ...plan, savedAt: Date.now() };
+  writeBackup(stamped);
+  return tx(PLAN, 'readwrite', (s) => s.put(stamped, 'current')).catch(() => undefined);
+};
 export const recall = (input: string) => tx<Remembered | undefined>(MEMORY, 'readonly', (s) => s.get(memoryKey(input))).catch(() => undefined);
 export const remember = (input: string, r: Remembered) => tx(MEMORY, 'readwrite', (s) => s.put({ address: r.address, location: r.location, at: Date.now() }, memoryKey(input))).catch(() => undefined);
 
