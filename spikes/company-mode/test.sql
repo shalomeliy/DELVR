@@ -56,7 +56,7 @@ select ok('mark delivered works', (mark_stop(:S1, 'delivered', null, 31.89, 34.8
 select ok('offline mark keeps the phone''s time', (select handled_at = '2026-11-17 09:00+02' from stops where id = :S1));
 -- A retry carries no phone time here, so if it were applied again handled_at would jump to now.
 select ok('same mark sent twice is applied once', (mark_stop(:S1, 'delivered', null, 31.89, 34.81, 'ev-1')).handled_at = '2026-11-17 09:00+02');
-select ok('courier sees the 11 failure reasons', (select count(*) from fail_reasons) = 11);
+select ok('courier sees the 8 failure reasons', (select count(*) from fail_reasons) = 8);
 select ok('courier cannot edit the reasons', t_rows($$update fail_reasons set label = 'x'$$) = 0);
 select ok('failed without a reason code is refused', t_error(format($$select mark_stop(%L, 'failed', 'טקסט', 0, 0, 'ev-x')$$, :S2)) = 'bad fail reason');
 select ok('failed with an unknown code is refused', t_error(format($$select mark_stop(%L, 'failed', null, 0, 0, 'ev-x', now(), 'made_up')$$, :S2)) = 'bad fail reason');

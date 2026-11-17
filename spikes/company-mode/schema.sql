@@ -29,7 +29,7 @@ create table fail_reasons (
 
 -- Default list. "Failed" means neither delivery nor a sticker (הדבקה) was possible: a recipient who is out, does not
 -- answer or cannot be reached gets a sticker, and a refusal or a new date counts as delivered. Reasons 1-6 follow the
--- postal "undeliverable as addressed" reasons (USPS DMM 507); 7-10 are courier cases. Awaiting the user's approval.
+-- postal "undeliverable as addressed" reasons (USPS DMM 507); 7 is a courier case. Approved by the user 2026-11-17.
 create function seed_fail_reasons() returns trigger language plpgsql security definer set search_path = public as $$
 begin
   insert into fail_reasons (company_id, code, label, needs_text, sort) values
@@ -40,10 +40,7 @@ begin
     (new.id, 'deceased',     'הנמען נפטר', false, 5),
     (new.id, 'vacant',       'הבניין ריק, נטוש או הרוס', false, 6),
     (new.id, 'no_place',     'אין איפה להדביק (אין דלת או תיבה נגישה)', false, 7),
-    (new.id, 'cancelled',    'השולח ביטל את המשלוח', false, 8),
-    (new.id, 'duplicate',    'כפול ברשימה / כבר נמסר', false, 9),
-    (new.id, 'out_of_area',  'מחוץ לאזור החלוקה', false, 10),
-    (new.id, 'other',        'אחר', true, 11);
+    (new.id, 'other',        'אחר', true, 8);
   return new;
 end $$;
 create trigger companies_fail_reasons after insert on companies for each row execute function seed_fail_reasons();
