@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { courierError, currentStop, greeting, israelDay, progress, withPending, type CStop } from '../src/company/courier/route';
+import { courierError, currentStop, greeting, israelDay, pickRoute, progress, withPending, type CStop } from '../src/company/courier/route';
 import type { Mark } from '../src/company/outbox';
 
 const st = (id: string, seq: number, delivery: CStop['delivery'] = 'todo'): CStop => ({ id, seq, input: id, address: null, lat: 31.8, lng: 34.7,
@@ -28,9 +28,19 @@ describe('courier route on the phone', () => {
   it('no current stop when all are marked', () => expect(currentStop([st('a', 1, 'pasted')])).toBeNull());
   it('the day and the greeting follow Israel time', () => {
     const t = Date.parse('2026-11-17T22:30:00Z'); // 00:30 in Israel, already the 18th
-    expect(israelDay(t)).toBe('2026-11-18');
+    expect(israelDay(0, t)).toBe('2026-11-18');
+    expect(israelDay(-1, t)).toBe('2026-11-17');
+    expect(israelDay(14, t)).toBe('2026-12-02');
     expect(greeting(Date.parse('2026-11-17T06:00:00Z'))).toBe('בוקר טוב');
     expect(greeting(t)).toBe('לילה טוב');
+  });
+  it('picks the route to show', () => {
+    const r = (day: string, status = 'sent') => ({ day, status });
+    expect(pickRoute([r('2026-11-17'), r('2026-11-18')], '2026-11-18')?.day).toBe('2026-11-18');
+    expect(pickRoute([r('2026-11-17', 'active'), r('2026-11-18')], '2026-11-18')?.day).toBe('2026-11-17');
+    expect(pickRoute([r('2026-11-17')], '2026-11-18')?.day).toBe('2026-11-17');
+    expect(pickRoute([r('2026-11-19')], '2026-11-18')?.day).toBe('2026-11-19');
+    expect(pickRoute([], '2026-11-18')).toBeNull();
   });
   it('errors in Hebrew', () => {
     expect(courierError(new Error('invite already used'))).toMatch('כבר נפתח');

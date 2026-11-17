@@ -1,18 +1,15 @@
 // Turning the admin's sorted draft into what send_route() stores. Pure, so it is tested without a server.
-import { dueEpoch, endModeOf, orderedStops } from '../domain/plan';
+import { endModeOf, orderedStops } from '../domain/plan';
+import { israelDay, israelTime } from './time';
 import type { Plan } from '../domain/types';
 
-/** "YYYY-MM-DD" of the admin's local day, offset days from today. */
-export function dayIso(offset = 0, now = Date.now()) {
-  const d = new Date(now); d.setDate(d.getDate() + offset);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
+/** "YYYY-MM-DD" in Israel, offset days from today. The courier's phone uses the same day. */
+export const dayIso = (offset = 0, now = Date.now()) => israelDay(offset, now);
 
-/** When the sort assumes the courier leaves: now for today, 08:00 for a later day. */
+/** When the sort assumes the courier leaves: now for today, 08:00 Israel time for a later day. */
 export function departFor(day: string, now = Date.now()) {
-  if (day <= dayIso(0, now)) return now;
-  const [y, m, d] = day.split('-').map(Number);
-  return new Date(y, m - 1, d, 8, 0, 0, 0).getTime();
+  if (day <= israelDay(0, now)) return now;
+  return israelTime(day, '08:00')!;
 }
 
 export interface SendPayload {
@@ -34,7 +31,7 @@ export function cannotSend(plan: Plan): string | null {
 
 const place = (p: Plan['start']) => ({ input: p.input, address: p.address, lat: p.location?.lat, lng: p.location?.lng });
 
-export function toSendPayload(plan: Plan, departAt: number): SendPayload {
+export function toSendPayload(plan: Plan, day: string, departAt: number): SendPayload {
   const o = plan.optimized;
   return {
     start: place(plan.start),
@@ -44,7 +41,7 @@ export function toSendPayload(plan: Plan, departAt: number): SendPayload {
     // the draft's own; the server gives new ones, so the order is carried by the stops' sequence instead.
     optimized: o ? { totalDurationSec: o.totalDurationSec, totalDistanceM: o.totalDistanceM, polyline: o.polyline, legs: o.legs, departAt } : {},
     stops: orderedStops(plan).filter((s) => s.location).map((s) => {
-      const due = s.dueAt ? dueEpoch(s.dueAt, departAt) : undefined;
+      const due = s.dueAt ? israelTime(day, s.dueAt) : undefined;
       return {
         input: s.input, address: s.address, lat: s.location!.lat, lng: s.location!.lng,
         ...(due ? { due_at: new Date(due).toISOString() } : {}),

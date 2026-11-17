@@ -4,7 +4,7 @@ import { logError, logInfo } from './log';
 import { getVehicle } from './vehicle';
 
 /** The company planner sorts for another courier, maybe for tomorrow: it sets the vehicle and the departure. */
-export interface OptimizeOptions { vehicle?: 'scooter' | 'car'; departAt?: number }
+export interface OptimizeOptions { vehicle?: 'scooter' | 'car'; departAt?: number; dueAt?: (hhmm: string) => number | undefined }
 
 export async function optimizePlan(plan: Plan, signal?: AbortSignal, opts: OptimizeOptions = {}): Promise<Optimized> {
   const stops = plan.stops.filter((s) => s.delivery === 'todo' && s.location);
@@ -12,6 +12,7 @@ export async function optimizePlan(plan: Plan, signal?: AbortSignal, opts: Optim
   if (!plan.start.location || !origin) throw new Error('חסרה נקודת יציאה מאומתת');
   const t0 = Date.now();
   const started = opts.departAt ?? t0;
+  const due = opts.dueAt ?? ((hhmm: string) => dueEpoch(hhmm, started));
   const timed = stops.filter((s) => s.dueAt).length;
   const vehicle = opts.vehicle ?? getVehicle();
   logInfo('optimize_request', { vehicle, stops: stops.length, pinned: stops.filter((s) => s.order !== 'auto').length, timed, endMode: endModeOf(plan) });
@@ -25,7 +26,7 @@ export async function optimizePlan(plan: Plan, signal?: AbortSignal, opts: Optim
       open: endModeOf(plan) === 'open',
       vehicle,
       departAt: started,
-      stops: stops.map((s) => ({ id: s.id, ...s.location!, order: s.order, ...(s.dueAt && dueEpoch(s.dueAt, started) ? { dueAt: dueEpoch(s.dueAt, started) } : {}) })),
+      stops: stops.map((s) => ({ id: s.id, ...s.location!, order: s.order, ...(s.dueAt && due(s.dueAt) ? { dueAt: due(s.dueAt) } : {}) })),
     }),
   });
   const raw = await res.text();

@@ -12,6 +12,7 @@ import { usePlanEditor, type PlanStorage } from '../../ui/usePlanEditor';
 import { getRoute, listCouriers, sendRoute, type Company, type Courier, type ServerRoute } from '../api';
 import { errorText, initials } from '../invite';
 import { cannotSend, dayIso, departFor, toSendPayload } from '../send';
+import { israelTime } from '../time';
 
 type Vehicle = 'scooter' | 'car';
 const DAYS = [{ offset: 0, label: 'היום' }, { offset: 1, label: 'מחר' }];
@@ -81,7 +82,7 @@ export function Planner({ company, onInvite }: { company: Company; onInvite: () 
 function Editor({ company, courier, day, vehicle }: { company: Company; courier: Courier; day: string; vehicle: Vehicle }) {
   const key = `${company.id}:${courier.userId}:${day}`;
   const storage = useMemo<PlanStorage>(() => ({ load: () => loadDraft(key), save: (p) => saveDraft(key, p), empty: emptyPlan }), [key]);
-  const ed = usePlanEditor(storage, () => ({ vehicle, departAt: departFor(day) }));
+  const ed = usePlanEditor(storage, () => ({ vehicle, departAt: departFor(day), dueAt: (hhmm) => israelTime(day, hhmm) }));
   const { plan, setPlan } = ed;
   const [server, setServer] = useState<ServerRoute | null | undefined>(undefined);
   const [sending, setSending] = useState(false);
@@ -104,7 +105,7 @@ function Editor({ company, courier, day, vehicle }: { company: Company; courier:
     if (!plan) return;
     setSending(true); setSendErr(''); setSent('');
     try {
-      const r = await sendRoute(company.id, courier.userId, day, vehicle, toSendPayload(plan, departFor(day)));
+      const r = await sendRoute(company.id, courier.userId, day, vehicle, toSendPayload(plan, day, departFor(day)));
       setSent(`נשלח ל${courier.name} · גרסה ${r.version}`);
       refresh();
     } catch (x) { setSendErr(errorText(x)); } finally { setSending(false); }

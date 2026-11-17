@@ -1,7 +1,7 @@
 // The courier phone's calls to Supabase. The courier never writes a table: marks go through mark_stop() only.
 import { supabase } from '../supabase';
 import type { Mark } from '../outbox';
-import type { CStop, Prices } from './route';
+import { pickRoute, type CStop, type Prices } from './route';
 
 function check<D>(r: { data: D; error: { message: string } | null }): D {
   if (r.error) throw new Error(r.error.message);
@@ -38,11 +38,14 @@ export async function myMembership(me: string): Promise<Membership | null> {
     prices: { price_delivered: Number(c.price_delivered), price_pasted: Number(c.price_pasted), price_failed: Number(c.price_failed) } };
 }
 
-/** Today's route, or the next one sent ahead. */
-export async function nextRoute(me: string, today: string): Promise<CRoute | null> {
-  const rows = check(await supabase().from('routes').select('id, day, version, status')
-    .eq('courier_id', me).gte('day', today).neq('status', 'draft').order('day').limit(1)) as CRoute[] | null;
-  return rows?.[0] ?? null;
+/**
+ * The route to show: today's (Israel time), else the next one sent ahead. Yesterday's route still counts while it
+ * is not finished, so a shift that runs past midnight, or a route sent for the day just ended, is not lost.
+ */
+export async function nextRoute(me: string, today: string, yesterday: string): Promise<CRoute | null> {
+  const rows = (check(await supabase().from('routes').select('id, day, version, status')
+    .eq('courier_id', me).gte('day', yesterday).not('status', 'in', '(draft,done)').order('day')) ?? []) as CRoute[];
+  return pickRoute(rows, today);
 }
 
 export async function routeStops(routeId: string): Promise<CStop[]> {

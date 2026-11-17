@@ -32,9 +32,7 @@ export function progress(stops: CStop[], prices: Prices | null) {
 /** The stop to do now: the first one in route order not marked yet. */
 export const currentStop = (stops: CStop[]) => stops.find((s) => s.delivery === 'todo') ?? null;
 
-/** "YYYY-MM-DD" in Israel, whatever the phone's own time zone. */
-export const israelDay = (now = Date.now()) =>
-  new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jerusalem', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
+export { israelDay } from '../time';
 
 export function greeting(now = Date.now()) {
   const h = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Jerusalem', hour: 'numeric', hourCycle: 'h23' }).format(now));
@@ -57,4 +55,10 @@ export function courierError(e: unknown) {
     [/Failed to fetch|NetworkError|network/i, 'אין קליטה. הסימונים נשמרים בטלפון ויישלחו לבד'],
   ];
   return map.find(([re]) => re.test(m))?.[1] ?? m;
+}
+
+/** Started yesterday and not finished, then today or the next day ahead, then yesterday's that was never started. */
+export function pickRoute<R extends { day: string; status: string }>(rows: R[], today: string): R | null {
+  const old = rows.filter((r) => r.day < today);
+  return old.find((r) => r.status === 'active') ?? rows.find((r) => r.day >= today) ?? old[0] ?? null;
 }

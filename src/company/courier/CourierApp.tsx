@@ -12,7 +12,7 @@ type State = { k: 'loading' } | { k: 'error'; msg: string } | { k: 'no-link' } |
 
 const OUTCOME: Record<Exclude<Outcome, 'todo'>, string> = { delivered: 'נמסר', pasted: 'הדבקה', failed: 'נכשל' };
 const time = (iso: string) => new Date(iso).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jerusalem' });
-const dayLabel = (day: string) => (day === israelDay() ? 'היום' : new Date(`${day}T12:00:00`).toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'numeric' }));
+const dayLabel = (day: string) => (day === israelDay() ? 'היום' : day === israelDay(-1) ? 'אתמול' : new Date(`${day}T12:00:00`).toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'numeric' }));
 
 /** Where the phone is, if it can tell within a few seconds. A mark never waits longer than that for it. */
 const here = () => new Promise<{ lat: number; lng: number } | null>((res) => {
@@ -78,7 +78,7 @@ function MyRoute({ me, member }: { me: string; member: Membership }) {
 
   const load = useCallback(async () => {
     try {
-      const r = await nextRoute(me, israelDay());
+      const r = await nextRoute(me, israelDay(), israelDay(-1));
       if (r && version.current !== null && r.version > version.current) setToast('המסלול עודכן');
       version.current = r?.version ?? null;
       setRoute(r);
