@@ -297,7 +297,7 @@ export default function App() {
         </div>
       )}
       </>}
-      <footer className="muted small center">גרסה {import.meta.env.VITE_BUILD ?? 'dev'}</footer>
+      <footer className="muted small center">גרסה {import.meta.env.VITE_VERSION} · {import.meta.env.VITE_BUILD ?? 'dev'}</footer>
     </main>
   );
 }

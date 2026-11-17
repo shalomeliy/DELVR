@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react';
 import type { IncomingMessage } from 'node:http';
 import { defineConfig, loadEnv, type Plugin } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
+import pkg from './package.json' with { type: 'json' };
 
 // Runs api/optimize.ts inside `npm run dev`, so the whole app works locally without Vercel.
 function devApi(routesKey: string | undefined): Plugin {
@@ -26,7 +27,11 @@ function devApi(routesKey: string | undefined): Plugin {
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   return {
-    define: { 'import.meta.env.VITE_BUILD': JSON.stringify((process.env.VERCEL_GIT_COMMIT_SHA ?? 'dev').slice(0, 7)) },
+    define: {
+      'import.meta.env.VITE_BUILD': JSON.stringify((process.env.VERCEL_GIT_COMMIT_SHA ?? 'dev').slice(0, 7)),
+      // The release number from package.json, bumped with every merged PR (see CHANGELOG.md).
+      'import.meta.env.VITE_VERSION': JSON.stringify(pkg.version),
+    },
     plugins: [
       react(),
       devApi(env.GOOGLE_ROUTES_KEY || env.VITE_GOOGLE_MAPS_KEY),

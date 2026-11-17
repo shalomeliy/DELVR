@@ -2,6 +2,16 @@
 
 Reply to the user in Hebrew (masculine form), short and direct, no emojis.
 
+## Release management (PassIT, required for every PR)
+
+Every PR that will be merged does all three, in the same PR:
+
+1. **Bump the version** in `package.json` (and `package-lock.json`) by SemVer: patch for a fix, docs or small tweak; minor for a feature the courier can see; major for a breaking change or one that needs action from the user. The app shows it in the settings menu.
+2. **Add a `CHANGELOG.md` entry** at the top: `## X.Y.Z - YYYY-MM-DD`, in Hebrew, user-facing (what the courier sees, not code), with the PR number. Work not yet merged goes under "בעבודה". `tests/version.test.ts` fails if the top entry and `package.json` differ.
+3. **Update `docs/PROJECT.md`**: the feature's status row, "איפה אנחנו עכשיו", any new decision from the user in the decisions log (dated), and anything the user must do under "מה צריך מבוס".
+
+If two open PRs claim the same version, the one merged second rebases and takes the next number.
+
 ## This folder is a template
 
 This folder is the user's **base template for every new project**. To start a new project, the user copies these files into a new folder and builds from there. So there are two situations, and you must know which one you are in:
