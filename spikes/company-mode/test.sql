@@ -56,8 +56,12 @@ select ok('mark delivered works', (mark_stop(:S1, 'delivered', null, 31.89, 34.8
 select ok('offline mark keeps the phone''s time', (select handled_at = '2026-11-17 09:00+02' from stops where id = :S1));
 -- A retry carries no phone time here, so if it were applied again handled_at would jump to now.
 select ok('same mark sent twice is applied once', (mark_stop(:S1, 'delivered', null, 31.89, 34.81, 'ev-1')).handled_at = '2026-11-17 09:00+02');
-select ok('failed without a reason is refused', t_error(format($$select mark_stop(%L, 'failed', '', 0, 0, 'ev-x')$$, :S2)) like '%check constraint%');
-select ok('failed with a reason works', (mark_stop(:S2, 'failed', 'לא ענה בטלפון', 31.90, 34.80, 'ev-2')).fail_reason = 'לא ענה בטלפון');
+select ok('courier sees the 11 failure reasons', (select count(*) from fail_reasons) = 11);
+select ok('courier cannot edit the reasons', t_rows($$update fail_reasons set label = 'x'$$) = 0);
+select ok('failed without a reason code is refused', t_error(format($$select mark_stop(%L, 'failed', 'טקסט', 0, 0, 'ev-x')$$, :S2)) = 'bad fail reason');
+select ok('failed with an unknown code is refused', t_error(format($$select mark_stop(%L, 'failed', null, 0, 0, 'ev-x', now(), 'made_up')$$, :S2)) = 'bad fail reason');
+select ok('"other" without text is refused', t_error(format($$select mark_stop(%L, 'failed', '  ', 0, 0, 'ev-x', now(), 'other')$$, :S2)) = 'reason text required');
+select ok('failed with a code and a note works', (mark_stop(:S2, 'failed', 'השאיר הודעה', 31.90, 34.80, 'ev-2', now(), 'no_answer')).fail_code = 'no_answer');
 select ok('pasted works', (mark_stop(:S3, 'pasted', null, 31.87, 34.74, 'ev-3')).delivery = 'pasted');
 select ok('courier cannot mark another courier''s stop', t_error(format($$select mark_stop(%L, 'delivered', null, 0, 0, 'ev-4')$$, :S4)) = 'not your route');
 select ok('first mark moves route to active', (select status from routes) = 'active');
@@ -96,7 +100,7 @@ select ok('last stop pasted', (mark_stop(:S3, 'pasted', null, 31.87, 34.74, 'ev-
 set request.jwt.claim.sub = :A;
 select ok('daily report has 4 rows', (select count(*) from daily_report(:C1, :K1, '2026-11-17')) = 4);
 select ok('daily report total is 40', (select sum(price) from daily_report(:C1, :K1, '2026-11-17')) = 40);
-select ok('failed reason in the report', (select reason from daily_report(:C1, :K1, '2026-11-17') where outcome = 'failed') = 'לא ענה בטלפון');
+select ok('failed reason in the report', (select reason_label || ' / ' || reason from daily_report(:C1, :K1, '2026-11-17') where outcome = 'failed') = 'לא ענה לטלפון / השאיר הודעה');
 
 -- Payments: open, fix one line, add a bonus, approve.
 select ok('admin opens the payout', open_payout(:C1, :K1, '2026-11-17') is not null);
@@ -122,6 +126,33 @@ select ok('approved payout cannot be re-opened', t_error(format($$select open_pa
 set request.jwt.claim.sub = :K1;
 select ok('courier cannot change a mark on a paid day', t_error(format($$select mark_stop(%L, 'todo', null, null, null, 'ev-9')$$, :S1)) = 'day already paid');
 
+-- ================= month close =================
+-- A second day for K1 (the 18th): sent, delivered, not approved yet.
+reset role; update routes set status = 'sent' where id = 'd0000000-0000-0000-0000-000000000003'; set role authenticated;
+set request.jwt.claim.sub = :K1;
+select ok('day 2 delivered', (mark_stop('e0000000-0000-0000-0000-000000000005', 'delivered', null, 31.87, 34.74, 'ev-10')).delivery = 'delivered');
+select ok('courier cannot prepare a month', t_error($$select prepare_month('11111111-0000-0000-0000-000000000000', '2026-11-01')$$) = 'admins only');
+select ok('courier cannot run the scheduler job', t_error($$select prepare_last_month_all()$$) like 'permission denied%');
+select ok('courier cannot call the internal payout function', t_error($$select _open_payout('11111111-0000-0000-0000-000000000000', 'cccccccc-0000-0000-0000-000000000001', '2026-11-18')$$) like 'permission denied%');
+select ok('courier sees no month summary', (select count(*) from month_summary(:C1, '2026-11-01')) = 0);
+
+set request.jwt.claim.sub = :A;
+-- Any day of the month works; it is rounded to the 1st.
+do $$ begin perform prepare_month('11111111-0000-0000-0000-000000000000', '2026-11-15'); end $$;
+select ok('admin prepared November', exists (select 1 from monthly_closings where month = '2026-11-01' and status = 'open'));
+select ok('prepare opened a payout for the 18th', (select status from payouts where day = '2026-11-18') = 'open');
+select ok('summary: K1 has 2 days, 1 approved, 1 open', (select (days, approved_days, open_days) = (2, 1, 1) from month_summary(:C1, '2026-11-01') where courier_id = :K1));
+select ok('summary: approved 70, pending 15', (select (approved_total, pending_total) = (70, 15) from month_summary(:C1, '2026-11-01') where courier_id = :K1));
+select ok('summary also lists K2 (no marks, 0)', (select pending_total = 0 and open_days = 1 from month_summary(:C1, '2026-11-01') where courier_id = :K2));
+select ok('month cannot be approved with open days', t_error(format($$select approve_month(%L, '2026-11-01')$$, :C1)) = 'days not approved: 2');
+select ok('approve the 18th', approve_payout((select id from payouts where day = '2026-11-18' and courier_id = :K1)) = 15);
+select ok('approve K2''s empty day', approve_payout((select id from payouts where courier_id = :K2)) = 0);
+select ok('month approved: total 85', approve_month(:C1, '2026-11-01') = 85);
+select ok('month cannot be approved twice', t_error(format($$select approve_month(%L, '2026-11-01')$$, :C1)) = 'month already approved');
+select ok('summary counts after close: 3 delivered, 2 pasted, 0 failed (one was changed to pasted)',
+  (select (delivered, pasted, failed) = (3, 2, 0) from month_summary(:C1, '2026-11-01') where courier_id = :K1));
+
 reset role;
-select ok('every mark, undo and added stop is logged (8), refused ones are not', (select count(*) from stop_events) = 8);
+select ok('the scheduler job runs for every company', prepare_last_month_all() = 2);
+select ok('every mark, undo and added stop is logged (9), refused ones are not', (select count(*) from stop_events) = 9);
 select format('%s of %s passed', count(*) filter (where pass), count(*)) from t_results;

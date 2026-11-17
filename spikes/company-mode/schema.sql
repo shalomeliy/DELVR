@@ -15,6 +15,37 @@ create table companies (
   created_at timestamptz not null default now()
 );
 
+-- The failure reasons the courier picks from. Per company, so each one can rename, hide or add its own.
+create table fail_reasons (
+  company_id uuid not null references companies on delete cascade,
+  code text not null,
+  label text not null,
+  -- 'other' and similar: the courier must also type what happened.
+  needs_text boolean not null default false,
+  sort int not null,
+  active boolean not null default true,
+  primary key (company_id, code)
+);
+
+-- Default list, from the reason lists of Spoke, Upper, DoorDash and Routific, adapted to Israel. Awaiting the user's approval.
+create function seed_fail_reasons() returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  insert into fail_reasons (company_id, code, label, needs_text, sort) values
+    (new.id, 'not_home',     'הנמען לא בבית / לא פתח', false, 1),
+    (new.id, 'no_answer',    'לא ענה לטלפון', false, 2),
+    (new.id, 'bad_address',  'כתובת שגויה או לא קיימת', false, 3),
+    (new.id, 'no_access',    'אין גישה לבניין (שער, קוד, אינטרקום)', false, 4),
+    (new.id, 'refused',      'הנמען סירב לקבל', false, 5),
+    (new.id, 'rescheduled',  'הנמען ביקש מועד אחר', false, 6),
+    (new.id, 'closed',       'עסק סגור', false, 7),
+    (new.id, 'damaged',      'חבילה פגומה או חסרה', false, 8),
+    (new.id, 'unsafe',       'אין חניה או אין דרך בטוחה להגיע', false, 9),
+    (new.id, 'no_time',      'לא הספקתי (נגמר הזמן)', false, 10),
+    (new.id, 'other',        'אחר', true, 11);
+  return new;
+end $$;
+create trigger companies_fail_reasons after insert on companies for each row execute function seed_fail_reasons();
+
 create table members (
   company_id uuid not null references companies on delete cascade,
   user_id uuid not null,
@@ -59,11 +90,13 @@ create table stops (
   due_at timestamptz,
   note text,
   delivery text not null default 'todo' check (delivery in ('todo', 'delivered', 'pasted', 'failed')),
+  -- Failure: a code from fail_reasons, plus the courier's words (required for codes that need text, like 'other').
+  fail_code text,
   fail_reason text,
   handled_at timestamptz,
   handled_lat double precision,
   handled_lng double precision,
-  check (delivery <> 'failed' or coalesce(trim(fail_reason), '') <> '')
+  check (delivery <> 'failed' or fail_code is not null)
 );
 create index on stops (route_id, seq);
 
@@ -105,6 +138,18 @@ create table payout_lines (
   manual boolean not null default false
 );
 
+-- Month close: on the 1st, for the month before. Sums the approved days per courier; approving locks the month.
+create table monthly_closings (
+  company_id uuid not null references companies on delete cascade,
+  month date not null check (extract(day from month) = 1),
+  status text not null default 'open' check (status in ('open', 'approved')),
+  prepared_at timestamptz not null default now(),
+  approved_by uuid,
+  approved_at timestamptz,
+  total numeric,
+  primary key (company_id, month)
+);
+
 -- ---------- helpers ----------
 
 create function my_role(c uuid) returns text language sql stable security definer set search_path = public as $$
@@ -125,6 +170,11 @@ alter table stops enable row level security;
 alter table stop_events enable row level security;
 alter table payouts enable row level security;
 alter table payout_lines enable row level security;
+alter table fail_reasons enable row level security;
+alter table monthly_closings enable row level security;
+create policy read_reasons on fail_reasons for select using (my_role(company_id) is not null);
+create policy admin_reasons on fail_reasons for all using (is_admin(company_id)) with check (is_admin(company_id));
+create policy admin_months on monthly_closings for select using (is_admin(company_id));
 
 create policy read_company on companies for select using (my_role(id) is not null);
 create policy admin_company on companies for update using (is_admin(id));
@@ -161,10 +211,11 @@ create policy admin_lines on payout_lines for select using (
 
 -- outcome: 'delivered' | 'pasted' | 'failed' | 'todo' (undo). Returns the stop as saved.
 -- client_event_id: made on the phone when the courier taps, so a retry after a lost connection is a no-op.
+-- p_code: the failure reason's code, required when p_outcome is 'failed'. p_reason: free text (required for 'other').
 create function mark_stop(p_stop uuid, p_outcome text, p_reason text, p_lat double precision, p_lng double precision,
-                          p_client_event_id text, p_client_at timestamptz default now())
+                          p_client_event_id text, p_client_at timestamptz default now(), p_code text default null)
 returns stops language plpgsql security definer set search_path = public as $$
-declare s stops; r routes; locked boolean;
+declare s stops; r routes; locked boolean; fr fail_reasons;
 begin
   if p_client_event_id is not null and exists (select 1 from stop_events where client_event_id = p_client_event_id) then
     select * into s from stops where id = p_stop;
@@ -180,10 +231,16 @@ begin
                  and day = r.day and status = 'approved') into locked;
   if locked then raise exception 'day already paid' using errcode = '55000'; end if;
   if p_outcome not in ('delivered', 'pasted', 'failed', 'todo') then raise exception 'bad outcome'; end if;
+  if p_outcome = 'failed' then
+    select * into fr from fail_reasons where company_id = r.company_id and code = p_code and active;
+    if not found then raise exception 'bad fail reason'; end if;
+    if fr.needs_text and coalesce(trim(p_reason), '') = '' then raise exception 'reason text required'; end if;
+  end if;
 
   update stops set
     delivery = p_outcome,
-    fail_reason = case when p_outcome = 'failed' then p_reason end,
+    fail_code = case when p_outcome = 'failed' then p_code end,
+    fail_reason = case when p_outcome = 'failed' then nullif(trim(p_reason), '') end,
     -- The phone's time of the tap, not the time it reached the server: an offline mark keeps its real time.
     handled_at = case when p_outcome = 'todo' then null else least(p_client_at, now()) end,
     handled_lat = case when p_outcome = 'todo' then null else p_lat end,
@@ -193,7 +250,7 @@ begin
   if r.status = 'sent' and p_outcome <> 'todo' then update routes set status = 'active', started_at = now() where id = r.id; end if;
   insert into stop_events (stop_id, by_user, kind, payload, client_event_id)
   values (p_stop, auth.uid(), case when p_outcome = 'todo' then 'unmarked' else 'marked' end,
-          jsonb_build_object('outcome', p_outcome, 'reason', p_reason, 'lat', p_lat, 'lng', p_lng, 'client_at', p_client_at),
+          jsonb_build_object('outcome', p_outcome, 'code', p_code, 'reason', p_reason, 'lat', p_lat, 'lng', p_lng, 'client_at', p_client_at),
           p_client_event_id);
   return s;
 end $$;
@@ -235,9 +292,10 @@ end $$;
 
 -- The courier's day as reported: one row per stop with the outcome and the price it earns.
 create function daily_report(p_company uuid, p_courier uuid, p_day date)
-returns table (seq int, address text, outcome text, reason text, handled_at timestamptz, price numeric)
+returns table (seq int, address text, outcome text, reason_label text, reason text, handled_at timestamptz, price numeric)
 language sql stable security definer set search_path = public as $$
-  select s.seq, coalesce(s.address, s.input), s.delivery, s.fail_reason, s.handled_at,
+  select s.seq, coalesce(s.address, s.input), s.delivery,
+         (select label from fail_reasons f where f.company_id = r.company_id and f.code = s.fail_code), s.fail_reason, s.handled_at,
          case s.delivery when 'delivered' then c.price_delivered when 'pasted' then c.price_pasted
                          when 'failed' then c.price_failed else 0 end
   from routes r join stops s on s.route_id = r.id join companies c on c.id = r.company_id
@@ -250,9 +308,16 @@ $$;
 -- Lines the admin already edited keep the admin's outcome and price.
 create function open_payout(p_company uuid, p_courier uuid, p_day date) returns uuid
 language plpgsql security definer set search_path = public as $$
-declare p payouts;
 begin
   if not is_admin(p_company) then raise exception 'admins only' using errcode = '42501'; end if;
+  return _open_payout(p_company, p_courier, p_day);
+end $$;
+
+-- Internal: no role check. Called by open_payout() and by the month close, which runs from the scheduler with no user.
+create function _open_payout(p_company uuid, p_courier uuid, p_day date) returns uuid
+language plpgsql security definer set search_path = public as $$
+declare p payouts;
+begin
   insert into payouts (company_id, courier_id, day) values (p_company, p_courier, p_day)
   on conflict (company_id, courier_id, day) do update set day = excluded.day returning * into p;
   if p.status = 'approved' then raise exception 'payout already approved' using errcode = '55000'; end if;
@@ -309,11 +374,111 @@ begin
   return total;
 end $$;
 
+-- ---------- month close ----------
+
+-- Per courier for a month: counts and totals from the daily payouts. Days not approved yet are counted apart,
+-- with what they would pay from the courier's marks, so the admin sees what is still missing.
+create function month_summary(p_company uuid, p_month date)
+returns table (courier_id uuid, name text, days int, approved_days int, open_days int,
+               delivered int, pasted int, failed int, approved_total numeric, pending_total numeric)
+language sql stable security definer set search_path = public as $$
+  with d as (
+    select distinct r.courier_id, r.day from routes r
+    where r.company_id = p_company and r.day >= p_month and r.day < (p_month + interval '1 month')::date
+  ), lines as (
+    select p.courier_id, p.day, p.status, l.outcome, l.price
+    from payouts p join payout_lines l on l.payout_id = p.id
+    where p.company_id = p_company and p.day >= p_month and p.day < (p_month + interval '1 month')::date
+  ), raw as (
+    -- Days with no approved payout: priced straight from the marks.
+    select r.courier_id, s.delivery as outcome,
+           case s.delivery when 'delivered' then c.price_delivered when 'pasted' then c.price_pasted
+                           when 'failed' then c.price_failed else 0 end as price
+    from routes r join stops s on s.route_id = r.id join companies c on c.id = r.company_id
+    where r.company_id = p_company and r.day >= p_month and r.day < (p_month + interval '1 month')::date
+      and not exists (select 1 from payouts p where p.company_id = p_company and p.courier_id = r.courier_id
+                      and p.day = r.day and p.status = 'approved')
+  )
+  select m.user_id, m.name,
+    (select count(*) from d where d.courier_id = m.user_id)::int,
+    (select count(*) from payouts p where p.company_id = p_company and p.courier_id = m.user_id and p.status = 'approved'
+       and p.day >= p_month and p.day < (p_month + interval '1 month')::date)::int,
+    (select count(*) from d where d.courier_id = m.user_id and not exists (select 1 from payouts p where p.company_id = p_company
+       and p.courier_id = d.courier_id and p.day = d.day and p.status = 'approved'))::int,
+    (select count(*) from lines where lines.courier_id = m.user_id and lines.status = 'approved' and outcome = 'delivered')::int
+      + (select count(*) from raw where raw.courier_id = m.user_id and outcome = 'delivered')::int,
+    (select count(*) from lines where lines.courier_id = m.user_id and lines.status = 'approved' and outcome = 'pasted')::int
+      + (select count(*) from raw where raw.courier_id = m.user_id and outcome = 'pasted')::int,
+    (select count(*) from lines where lines.courier_id = m.user_id and lines.status = 'approved' and outcome = 'failed')::int
+      + (select count(*) from raw where raw.courier_id = m.user_id and outcome = 'failed')::int,
+    coalesce((select sum(price) from lines where lines.courier_id = m.user_id and lines.status = 'approved'), 0),
+    coalesce((select sum(price) from raw where raw.courier_id = m.user_id), 0)
+  from members m
+  where m.company_id = p_company and m.role = 'courier' and is_admin(p_company)
+    and exists (select 1 from d where d.courier_id = m.user_id)
+  order by m.name
+$$;
+
+-- Internal: opens a daily payout for every courier day of the month that has none, and the month record.
+create function _prepare_month(p_company uuid, p_month date) returns void
+language plpgsql security definer set search_path = public as $$
+declare d record;
+begin
+  if exists (select 1 from monthly_closings where company_id = p_company and month = p_month and status = 'approved') then return; end if;
+  for d in select distinct r.courier_id, r.day from routes r
+           where r.company_id = p_company and r.courier_id is not null
+             and r.day >= p_month and r.day < (p_month + interval '1 month')::date
+             and not exists (select 1 from payouts p where p.company_id = p_company and p.courier_id = r.courier_id and p.day = r.day)
+  loop perform _open_payout(p_company, d.courier_id, d.day); end loop;
+  insert into monthly_closings (company_id, month) values (p_company, p_month)
+  on conflict (company_id, month) do update set prepared_at = now();
+end $$;
+
+-- The admin can also run it by hand (for example before the 1st).
+create function prepare_month(p_company uuid, p_month date) returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if not is_admin(p_company) then raise exception 'admins only' using errcode = '42501'; end if;
+  perform _prepare_month(p_company, date_trunc('month', p_month)::date);
+end $$;
+
+-- Run by the scheduler on the 1st: prepares last month for every company. Israel time decides which month is "last".
+create function prepare_last_month_all() returns int
+language plpgsql security definer set search_path = public as $$
+declare c record; n int := 0;
+  m date := (date_trunc('month', (now() at time zone 'Asia/Jerusalem')) - interval '1 month')::date;
+begin
+  for c in select id from companies loop perform _prepare_month(c.id, m); n := n + 1; end loop;
+  return n;
+end $$;
+
+-- Locks the month. Refused while any day of it is not approved, so nothing is paid from unchecked marks.
+create function approve_month(p_company uuid, p_month date) returns numeric
+language plpgsql security definer set search_path = public as $$
+declare mc monthly_closings; v_open int; v_total numeric;
+begin
+  if not is_admin(p_company) then raise exception 'admins only' using errcode = '42501'; end if;
+  select * into mc from monthly_closings where company_id = p_company and month = p_month for update;
+  if not found then raise exception 'month not prepared'; end if;
+  if mc.status = 'approved' then raise exception 'month already approved' using errcode = '55000'; end if;
+  select coalesce(sum(s.open_days), 0), coalesce(sum(s.approved_total), 0) into v_open, v_total from month_summary(p_company, p_month) s;
+  if v_open > 0 then raise exception 'days not approved: %', v_open using errcode = '55000'; end if;
+  update monthly_closings set status = 'approved', approved_by = auth.uid(), approved_at = now(), total = v_total
+  where company_id = p_company and month = p_month;
+  return v_total;
+end $$;
+
 -- Functions are callable by signed-in users only; each checks the caller's role itself.
 revoke execute on all functions in schema public from public, anon;
 grant execute on all functions in schema public to authenticated;
 grant select, insert, update, delete on all tables in schema public to authenticated;
 grant usage on all sequences in schema public to authenticated;
+-- Internal functions: no role check inside, so nobody calls them from the app.
+revoke execute on function _open_payout(uuid, uuid, date), _prepare_month(uuid, date), prepare_last_month_all(), seed_fail_reasons() from authenticated;
+
+-- Supabase only: run the month close at 08:00 Israel time on the 1st (06:00 UTC; 05:00 UTC in summer would also be fine).
+-- Enable pg_cron first (Database > Extensions), then run:
+--   select cron.schedule('passit-month-close', '0 6 1 * *', 'select prepare_last_month_all()');
 
 -- Realtime: the admin's map and the courier's route update live from these two tables.
 -- (Supabase only; the stub creates an empty publication so this line also runs locally.)

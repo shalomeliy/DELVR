@@ -5,7 +5,7 @@
 // seen, so a mark whose answer was lost on the way back can be sent again without counting twice.
 
 /** Errors the server will give again however many times we retry: drop the mark and tell the courier. */
-const PERMANENT = ['not your route', 'day already paid', 'stop not found', 'bad outcome', 'check constraint'];
+const PERMANENT = ['not your route', 'day already paid', 'stop not found', 'bad outcome', 'bad fail reason', 'reason text required', 'check constraint'];
 export const isPermanent = (err) => PERMANENT.some((p) => String(err?.message ?? err).includes(p));
 
 /**
@@ -16,8 +16,8 @@ export const isPermanent = (err) => PERMANENT.some((p) => String(err?.message ??
 export function createOutbox({ store, send, onRejected = () => {}, now = () => Date.now(), newId = () => crypto.randomUUID() }) {
   let flushing = null;
 
-  async function enqueue({ stopId, outcome, reason = null, lat = null, lng = null }) {
-    const mark = { id: newId(), stopId, outcome, reason, lat, lng, at: new Date(now()).toISOString() };
+  async function enqueue({ stopId, outcome, code = null, reason = null, lat = null, lng = null }) {
+    const mark = { id: newId(), stopId, outcome, code, reason, lat, lng, at: new Date(now()).toISOString() };
     const q = await store.load();
     q.push(mark);
     await store.save(q);

@@ -41,6 +41,7 @@
     <div class="row"><select id="courier"></select><input id="day" type="date"></div>
     <div class="row"><input id="newStop" placeholder="כתובת חדשה באמצע המסלול"><button id="add">הוסף לשליח</button></div>
     <div class="row"><button id="report">דוח יומי</button><button id="payout">פתח תשלום</button><button id="approve">אשר תשלום</button></div>
+    <div class="row"><button id="month">סיכום חודש</button><button id="closeMonth">סגור חודש</button></div>
     <div id="pay"></div>
   </div>
   <div id="courierTools" class="hidden">
@@ -63,7 +64,7 @@ const LABEL = { todo: 'ממתין', delivered: 'נמסר', pasted: 'הדבקה',
 const today = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Jerusalem' });
 for (const k of ['url', 'key', 'email']) $(k).value = LS.get('spike_' + k);
 
-let sb, me, member, stops = [], route = null, channel = null, outbox, attempt = 0;
+let sb, me, member, stops = [], route = null, channel = null, outbox, attempt = 0, reasons = [], failing = null;
 
 $('login').onclick = async () => {
   for (const k of ['url', 'key', 'email']) LS.set('spike_' + k, $(k).value.trim());
@@ -74,6 +75,7 @@ $('login').onclick = async () => {
   const m = await sb.from('members').select('company_id, role, name').eq('user_id', me.id).eq('active', true).maybeSingle();
   if (!m.data) { $('who').textContent = 'המשתמש לא משויך לחברה. הרץ את seed.sql'; return; }
   member = m.data;
+  reasons = (await sb.from('fail_reasons').select('*').eq('company_id', member.company_id).eq('active', true).order('sort')).data ?? [];
   $('setup').classList.add('hidden'); $('app').classList.remove('hidden');
   $('role').textContent = `${member.name} (${member.role === 'admin' ? 'מנהל' : 'שליח'})`;
   member.role === 'admin' ? startAdmin() : startCourier();
@@ -89,15 +91,25 @@ function render() {
     el.className = 'stop ' + s.delivery;
     const lag = s.handled_at && s._seenAt ? ` · הגיע למסך אחרי ${((s._seenAt - Date.parse(s.handled_at)) / 1000).toFixed(1)} שנ'` : '';
     el.innerHTML = `<div class="t">${s.seq}. ${esc(s.address ?? s.input)}</div>
-      <div class="muted">${LABEL[s.delivery]}${s.fail_reason ? ': ' + esc(s.fail_reason) : ''}${s.handled_at ? ' · ' + new Date(s.handled_at).toLocaleTimeString('he-IL') : ''}${member.role === 'admin' ? lag : ''}</div>`;
+      <div class="muted">${LABEL[s.delivery]}${s.fail_code ? ': ' + esc(reasons.find((r) => r.code === s.fail_code)?.label ?? s.fail_code) : ''}${s.fail_reason ? ' (' + esc(s.fail_reason) + ')' : ''}${s.handled_at ? ' · ' + new Date(s.handled_at).toLocaleTimeString('he-IL') : ''}${member.role === 'admin' ? lag : ''}</div>`;
     if (canMark) {
       const row = document.createElement('div'); row.className = 'row';
       for (const [o, t] of [['delivered', 'נמסר'], ['pasted', 'הדבקה'], ['failed', 'נכשל'], ['todo', 'ביטול']]) {
         const b = document.createElement('button'); b.textContent = t;
-        b.onclick = () => mark(s, o);
+        b.onclick = () => (o === 'failed' ? ((failing = s.id), render()) : mark(s, o));
         row.append(b);
       }
       el.append(row);
+      if (failing === s.id) {
+        const f = document.createElement('div'); f.className = 'row';
+        f.innerHTML = `<select>${reasons.map((r) => `<option value="${r.code}">${esc(r.label)}</option>`).join('')}</select><input placeholder="הערה (חובה ב'אחר')"><button class="p">שמור נכשל</button>`;
+        f.querySelector('button').onclick = () => {
+          const code = f.querySelector('select').value, text = f.querySelector('input').value.trim();
+          if (reasons.find((r) => r.code === code)?.needs_text && !text) return toast('ב"אחר" צריך לכתוב מה קרה');
+          failing = null; mark(s, 'failed', code, text || null);
+        };
+        el.append(f);
+      }
     }
     $('stops').append(el);
   }
@@ -147,7 +159,8 @@ $('report').onclick = async () => {
   if (error) return toast(error.message);
   const n = (o) => data.filter((r) => r.outcome === o).length;
   const total = data.reduce((a, r) => a + Number(r.price), 0);
-  $('pay').innerHTML = `<p>נמסרו ${n('delivered')} · הודבקו ${n('pasted')} · נכשלו ${n('failed')} · ממתינים ${n('todo')} · <b>לתשלום ${total} ₪</b></p>`;
+  $('pay').innerHTML = `<p>נמסרו ${n('delivered')} · הודבקו ${n('pasted')} · נכשלו ${n('failed')} · ממתינים ${n('todo')} · <b>לתשלום ${total} ₪</b></p>`
+    + data.filter((r) => r.outcome === 'failed').map((r) => `<div class="muted">נכשל: ${esc(r.address)} · ${esc(r.reason_label ?? '')}${r.reason ? ' (' + esc(r.reason) + ')' : ''}</div>`).join('');
 };
 $('payout').onclick = async () => {
   const { data: id, error } = await sb.rpc('open_payout', { p_company: member.company_id, p_courier: $('courier').value, p_day: $('day').value });
@@ -175,13 +188,27 @@ $('approve').onclick = async () => {
   r.error ? toast(r.error.message) : (toast(`אושר: ${r.data} ₪`), showPayout(id));
 };
 
+const monthOf = () => $('day').value.slice(0, 8) + '01';
+$('month').onclick = async () => {
+  const { data, error } = await sb.rpc('month_summary', { p_company: member.company_id, p_month: monthOf() });
+  if (error) return toast(error.message);
+  $('pay').innerHTML = `<p><b>חודש ${monthOf().slice(0, 7)}</b></p>` + data.map((r) =>
+    `<div class="row muted">${esc(r.name)} · ${r.days} ימים (${r.approved_days} אושרו${r.open_days ? `, <b>${r.open_days} לא אושרו</b>` : ''}) · נמסרו ${r.delivered} · הודבקו ${r.pasted} · נכשלו ${r.failed} · <b>${r.approved_total} ₪</b>${Number(r.pending_total) ? ` + ${r.pending_total} ₪ ממתין` : ''}</div>`).join('');
+};
+$('closeMonth').onclick = async () => {
+  const p = await sb.rpc('prepare_month', { p_company: member.company_id, p_month: monthOf() });
+  if (p.error) return toast(p.error.message);
+  const r = await sb.rpc('approve_month', { p_company: member.company_id, p_month: monthOf() });
+  r.error ? toast(r.error.message.startsWith('days not approved') ? 'יש ימים שעוד לא אושרו. אשר אותם קודם' : r.error.message) : toast(`החודש נסגר: ${r.data} ₪`);
+};
+
 // ---------------- courier ----------------
 async function startCourier() {
   $('courierTools').classList.remove('hidden');
   outbox = createOutbox({
     store: localStore('spike_outbox'),
     send: async (m) => {
-      const { error } = await sb.rpc('mark_stop', { p_stop: m.stopId, p_outcome: m.outcome, p_reason: m.reason, p_lat: m.lat, p_lng: m.lng, p_client_event_id: m.id, p_client_at: m.at });
+      const { error } = await sb.rpc('mark_stop', { p_stop: m.stopId, p_outcome: m.outcome, p_code: m.code, p_reason: m.reason, p_lat: m.lat, p_lng: m.lng, p_client_event_id: m.id, p_client_at: m.at });
       if (error) throw new Error(error.message);
     },
     onRejected: (m, e) => toast('הסימון לא נשמר: ' + e.message),
@@ -209,13 +236,11 @@ async function loadCourier() {
     upsert(p.new); render();
   }, (p) => { if (p.new.id === route.id && p.new.version !== route.version) { route = p.new; toast('המסלול עודכן'); } });
 }
-async function mark(s, outcome) {
-  let reason = null;
-  if (outcome === 'failed') { reason = prompt('סיבת הכישלון'); if (!reason?.trim()) return; }
+async function mark(s, outcome, code = null, reason = null) {
   const pos = await here();
-  await outbox.enqueue({ stopId: s.id, outcome, reason, lat: pos?.lat ?? null, lng: pos?.lng ?? null });
+  await outbox.enqueue({ stopId: s.id, outcome, code, reason, lat: pos?.lat ?? null, lng: pos?.lng ?? null });
   // Shown right away, before the server answers: the courier never waits for signal.
-  Object.assign(s, { delivery: outcome, fail_reason: reason, handled_at: outcome === 'todo' ? null : new Date().toISOString() });
+  Object.assign(s, { delivery: outcome, fail_code: code, fail_reason: reason, handled_at: outcome === 'todo' ? null : new Date().toISOString() });
   render(); flush();
 }
 const here = () => new Promise((res) => navigator.geolocation
