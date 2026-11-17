@@ -472,6 +472,16 @@ revoke execute on all functions in schema public from public, anon;
 grant execute on all functions in schema public to authenticated;
 grant select, insert, update, delete on all tables in schema public to authenticated;
 grant usage on all sequences in schema public to authenticated;
+-- Signed-out visitors (anon key alone) get nothing: no table, no function. Holds whatever the project's
+-- "Automatically expose new tables" setting is, and the default privileges below keep it so for later tables.
+revoke all on all tables in schema public from anon;
+revoke all on all sequences in schema public from anon;
+alter default privileges in schema public revoke all on tables from anon, authenticated;
+alter default privileges in schema public revoke all on sequences from anon, authenticated;
+alter default privileges in schema public revoke execute on functions from public, anon, authenticated;
+alter default privileges for role postgres in schema public revoke all on tables from anon, authenticated;
+alter default privileges for role postgres in schema public revoke all on sequences from anon, authenticated;
+alter default privileges for role postgres in schema public revoke execute on functions from public, anon, authenticated;
 -- Internal functions: no role check inside, so nobody calls them from the app.
 revoke execute on function _open_payout(uuid, uuid, date), _prepare_month(uuid, date), prepare_last_month_all(), seed_fail_reasons() from authenticated;
 
@@ -482,3 +492,12 @@ revoke execute on function _open_payout(uuid, uuid, date), _prepare_month(uuid, 
 -- Realtime: the admin's map and the courier's route update live from these two tables.
 -- (Supabase only; the stub creates an empty publication so this line also runs locally.)
 alter publication supabase_realtime add table stops, routes;
+
+-- Last check: stop here if any table in public has row level security off ("Enable automatic RLS" not needed).
+do $$
+declare t text;
+begin
+  select string_agg(c.relname, ', ') into t from pg_class c join pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'public' and c.relkind = 'r' and not c.relrowsecurity and c.relname not like 't\_%';
+  if t is not null then raise exception 'RLS is off on: %', t; end if;
+end $$;

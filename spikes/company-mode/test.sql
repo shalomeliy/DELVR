@@ -8,7 +8,8 @@ create function ok(p_name text, p_pass boolean) returns text language sql securi
   insert into t_results (name, pass) values (p_name, coalesce(p_pass, false))
   returning case when pass then 'PASS  ' else 'FAIL  ' end || name
 $$;
-grant execute on function ok(text, boolean) to authenticated;
+grant execute on function ok(text, boolean) to authenticated, anon;
+grant execute on function t_rows(text), t_error(text) to authenticated, anon;
 
 -- People: company 1 has admin A and couriers K1, K2. Company 2 has admin B.
 \set A  '''aaaaaaaa-0000-0000-0000-000000000001'''
@@ -37,6 +38,18 @@ insert into stops (id, route_id, seq, input, address, lat, lng) values
 \set S3 '''e0000000-0000-0000-0000-000000000003'''
 \set S4 '''e0000000-0000-0000-0000-000000000004'''
 \set RT1 '''d0000000-0000-0000-0000-000000000001'''
+
+-- ================= signed-out visitor (anon key only) =================
+set role anon;
+select ok('anon cannot read routes', t_error($$select count(*) from routes$$) like 'permission denied%');
+select ok('anon cannot read payouts', t_error($$select count(*) from payout_lines$$) like 'permission denied%');
+select ok('anon cannot call mark_stop', t_error($$select mark_stop(null, 'delivered', null, 0, 0, 'x')$$) like 'permission denied%');
+reset role;
+-- A table created later gets no grants for the app's roles until one is given on purpose.
+create table t_later (x int);
+select ok('a table created later is not exposed to anon or signed-in users',
+  not has_table_privilege('anon', 't_later', 'select') and not has_table_privilege('authenticated', 't_later', 'select'));
+drop table t_later;
 
 -- ================= courier K1 =================
 set role authenticated;

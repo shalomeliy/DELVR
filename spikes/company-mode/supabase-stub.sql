@@ -20,4 +20,4 @@ declare n int; begin execute q; get diagnostics n = row_count; return n; end $$;
 create or replace function t_error(q text) returns text language plpgsql as $$
 begin execute q; return 'NO ERROR';
 exception when others then return sqlerrm; end $$;
-grant execute on function t_rows(text), t_error(text) to authenticated;
+grant execute on function t_rows(text), t_error(text) to authenticated, anon;
