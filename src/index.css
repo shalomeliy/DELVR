@@ -114,3 +114,7 @@ ol.route li.pasted { opacity: .6; }
 .menu > button:hover { background: var(--bg); }
 .menu-sec { border-top: 1px solid var(--line); margin-top: 4px; padding: 10px 8px 4px; }
 .menu-sec .seg { margin: 4px 0 6px; }
+/* Re-sort sheet: slides over the route from the bottom, thumb reach on a phone. */
+.sheet-back { position: fixed; inset: 0; background: rgba(0, 0, 0, .45); display: flex; align-items: flex-end; justify-content: center; z-index: 50; }
+.sheet { width: 100%; max-width: 640px; margin: 0; border-radius: 14px 14px 0 0; padding-bottom: calc(14px + env(safe-area-inset-bottom)); max-height: 90vh; overflow-y: auto; }
+.sheet .primary { margin-top: 0; }
