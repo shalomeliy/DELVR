@@ -90,4 +90,15 @@ select ok('old identity is inactive, history kept', (select active from members 
 select ok('upcoming route moved to the new phone', (select courier_id from routes where day > now()::date) = 'dddddddd-0000-0000-0000-000000000001');
 select ok('old day stays with the old identity', (select courier_id from routes where day = '2020-01-01') = :K1);
 
+-- ================= a signed-in stranger (any anonymous phone gets the authenticated role) =================
+set role authenticated; set request.jwt.claim.sub = :STRANGER;
+select ok('stranger sees no row in any table', (select sum(n) from (
+  select count(*) n from companies union all select count(*) from members union all select count(*) from invites
+  union all select count(*) from routes union all select count(*) from stops union all select count(*) from stop_events
+  union all select count(*) from payouts union all select count(*) from payout_lines union all select count(*) from fail_reasons
+  union all select count(*) from monthly_closings) x) = 0);
+select ok('stranger cannot create a company', t_error($$insert into companies (name) values ('x')$$) like '%row-level security%');
+select ok('stranger cannot make himself a member', t_error(format($$insert into members values (%L, %L, 'admin', 'x', true)$$, :C1, :STRANGER)) like '%row-level security%');
+reset role;
+
 select format('%s of %s passed', count(*) filter (where pass), count(*)) from t_results;
