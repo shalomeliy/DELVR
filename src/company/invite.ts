@@ -6,10 +6,33 @@ export const inviteLink = (token: string, origin = location.origin) => `${origin
 
 export const inviteToken = (hash: string) => /(?:^#|&)invite=([0-9a-f]{32})(?:&|$)/.exec(hash)?.[1] ?? null;
 
-export function whatsappLink(name: string, company: string, link: string) {
-  const text = `היי ${name}, זה הקישור שלך למסלולים של ${company} ב-PassIT. פותחים אותו פעם אחת בטלפון שאיתו יוצאים לחלוקה:\n${link}`;
-  return `https://wa.me/?text=${encodeURIComponent(text)}`;
+/** The join message the admin sends. WhatsApp shows *text* in bold. */
+export function inviteMessage(name: string, company: string, link: string, newPhone = false) {
+  const first = name.replace(/\s*\(.*\)\s*$/, '').trim().split(/\s+/)[0] || name;
+  return [
+    newPhone ? `*${first}, הנה קישור חדש ל-PassIT של ${company}*` : `*${first}, ברוך הבא לצוות השליחים של ${company}*`,
+    '',
+    'המסלולים שלך מגיעים מעכשיו ב-PassIT: כל מסלול כבר מסודר בדרך הכי מהירה, ואתה רק נוסע ומסמן.',
+    '',
+    `*הצטרפות (פעם אחת, דקה):*`,
+    'פותחים את הקישור בטלפון שאיתו יוצאים לחלוקה. בלי סיסמה, בלי הרשמה ובלי אפליקציה להתקין.',
+    link,
+    '',
+    '*חשוב לדעת:*',
+    '- הקישור אישי, עובד בטלפון אחד בלבד ותקף 7 ימים',
+    '- בכל עצירה מסמנים *נמסר*, *הדבקה* או *נכשל*',
+    '- *הדבקה*: לא בבית, לא עונה או אין גישה לבניין',
+    '- *נכשל*: רק כשאי אפשר למסור וגם אי אפשר להדביק (בוחרים סיבה)',
+    '- אין קליטה? מסמנים כרגיל, הכול נשלח לבד כשהקליטה חוזרת',
+    '- המיקום נשמר רק ברגע הסימון, לא במעקב רציף',
+    '- לא מוחקים את נתוני הדפדפן. אם זה קרה, מבקשים קישור חדש',
+    '',
+    'בהצלחה בדרכים!',
+  ].join('\n');
 }
+
+export const whatsappLink = (name: string, company: string, link: string, newPhone = false) =>
+  `https://wa.me/?text=${encodeURIComponent(inviteMessage(name, company, link, newPhone))}`;
 
 export type InviteState = 'open' | 'expired';
 export const inviteState = (i: Pick<Invite, 'expiresAt'>, now = Date.now()): InviteState =>

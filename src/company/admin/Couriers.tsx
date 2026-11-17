@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { cancelInvite, createInvite, listCouriers, listOpenInvites, setCourierActive, type Company, type Courier, type Invite } from '../api';
-import { errorText, expiresIn, initials, inviteLink, inviteState, whatsappLink } from '../invite';
+import { errorText, expiresIn, initials, inviteLink, inviteMessage, inviteState, whatsappLink } from '../invite';
 
 /** Who the new link is for: a new courier, or an existing one whose phone lost its sign-in. */
 type Draft = { name: string; replaces: Courier | null };
@@ -154,7 +154,7 @@ function LinkSheet({ company, invite, onClose }: { company: Company; invite: Inv
   const link = inviteLink(invite.token);
   const [copied, setCopied] = useState(false);
   async function copy() {
-    try { await navigator.clipboard.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { /* the link is on screen to copy by hand */ }
+    try { await navigator.clipboard.writeText(inviteMessage(invite.name, company.name, link, !!invite.replaces)); setCopied(true); setTimeout(() => setCopied(false), 2000); } catch { /* the link is on screen to copy by hand */ }
   }
   return (
     <Sheet title="קישור הזמנה" onClose={onClose}>
@@ -162,8 +162,8 @@ function LinkSheet({ company, invite, onClose }: { company: Company; invite: Inv
       <p className="co-muted" style={{ margin: 0 }}>פותחים אותו פעם אחת בטלפון שאיתו יוצאים לחלוקה. {expiresIn(invite)}.</p>
       <div className="co-linkbox">{link}</div>
       <div className="co-row">
-        <a className="co-btn co-primary" href={whatsappLink(invite.name, company.name, link)} target="_blank" rel="noopener noreferrer">שלח בוואטסאפ</a>
-        <button type="button" onClick={copy} aria-live="polite">{copied ? 'הועתק' : 'העתק קישור'}</button>
+        <a className="co-btn co-primary" href={whatsappLink(invite.name, company.name, link, !!invite.replaces)} target="_blank" rel="noopener noreferrer">שלח בוואטסאפ</a>
+        <button type="button" onClick={copy} aria-live="polite">{copied ? 'הועתק' : 'העתק הודעה'}</button>
       </div>
       <button type="button" className="co-quiet co-wide" style={{ marginTop: 10 }} onClick={onClose}>סגור</button>
     </Sheet>

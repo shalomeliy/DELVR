@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { errorText, expiresIn, initials, inviteLink, inviteState, inviteToken, whatsappLink } from '../src/company/invite';
+import { errorText, expiresIn, initials, inviteLink, inviteMessage, inviteState, inviteToken, whatsappLink } from '../src/company/invite';
 
 const T = '0123456789abcdef0123456789abcdef';
 const now = Date.parse('2026-11-17T12:00:00Z');
@@ -19,7 +19,12 @@ describe('invite links', () => {
     const url = whatsappLink('דני', 'ARTPEACE', inviteLink(T, 'https://passit.app'));
     expect(url.startsWith('https://wa.me/?text=')).toBe(true);
     const text = decodeURIComponent(url.split('text=')[1]);
-    expect(text).toContain('דני'); expect(text).toContain('ARTPEACE'); expect(text).toContain(`/c#invite=${T}`);
+    expect(text).toContain('*דני, ברוך הבא לצוות השליחים של ARTPEACE*'); expect(text).toContain(`/c#invite=${T}`);
+    expect(text).toContain('*הדבקה*: לא בבית');
+  });
+  it('a new-phone link greets by first name, without the note in brackets', () => {
+    const text = inviteMessage('יוסי כהן (טלפון חדש)', 'ARTPEACE', 'L', true);
+    expect(text.split('\n')[0]).toBe('*יוסי, הנה קישור חדש ל-PassIT של ARTPEACE*');
   });
   it('expiry in words', () => {
     expect([at(24 * 6 + 1), at(30), at(5), at(1.5), at(0.5), at(-1)].map((i) => expiresIn(i, now)))
