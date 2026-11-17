@@ -1,13 +1,15 @@
 import { endModeOf, routeOrigin } from '../domain/plan';
 import type { Optimized, Plan } from '../domain/types';
 import { logError, logInfo } from './log';
+import { getVehicle } from './vehicle';
 
 export async function optimizePlan(plan: Plan, signal?: AbortSignal): Promise<Optimized> {
   const stops = plan.stops.filter((s) => s.delivery === 'todo' && s.location);
   const origin = routeOrigin(plan);
   if (!plan.start.location || !origin) throw new Error('חסרה נקודת יציאה מאומתת');
   const started = Date.now();
-  logInfo('optimize_request', { stops: stops.length, pinned: stops.filter((s) => s.order !== 'auto').length, endMode: endModeOf(plan) });
+  const vehicle = getVehicle();
+  logInfo('optimize_request', { vehicle, stops: stops.length, pinned: stops.filter((s) => s.order !== 'auto').length, endMode: endModeOf(plan) });
   const res = await fetch('/api/optimize', {
     method: 'POST', signal,
     headers: { 'Content-Type': 'application/json' },
@@ -16,6 +18,7 @@ export async function optimizePlan(plan: Plan, signal?: AbortSignal): Promise<Op
       // Sent even for a round trip: after deliveries the origin is the last stop, not the start.
       destination: endModeOf(plan) === 'address' ? plan.end?.location ?? null : endModeOf(plan) === 'return' ? plan.start.location : null,
       open: endModeOf(plan) === 'open',
+      vehicle,
       stops: stops.map((s) => ({ id: s.id, ...s.location!, order: s.order })),
     }),
   });
@@ -30,6 +33,6 @@ export async function optimizePlan(plan: Plan, signal?: AbortSignal): Promise<Op
     logError('optimize_failed', { status: res.status, error: data.error, ms: Date.now() - started });
     throw new Error(data.error ?? `שגיאת שרת ${res.status}`);
   }
-  logInfo('optimize_ok', { ms: Date.now() - started, totalDurationSec: data.totalDurationSec, totalDistanceM: data.totalDistanceM, order: data.order });
+  logInfo('optimize_ok', { picked: data.picked, ms: Date.now() - started, totalDurationSec: data.totalDurationSec, totalDistanceM: data.totalDistanceM, order: data.order });
   return { ...(data as unknown as Omit<Optimized, 'at'>), at: Date.now() };
 }

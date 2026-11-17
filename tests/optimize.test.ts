@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { handleOptimize, optimizeRoute, validate, HttpError } from '../api/_lib/optimize';
+import { handleOptimize, optimizeRoute, sweepOrder, validate, HttpError } from '../api/_lib/optimize';
 
 const TLV = { lat: 32.08, lng: 34.78 };
 const p = (id: string, d: number, order?: 'first' | 'auto' | 'last') => ({ id, lat: 31.88 + d, lng: 34.74 + d, order });
@@ -43,7 +43,9 @@ describe('optimizeRoute', () => {
     expect(out.order).toEqual(['c', 'a', 'b']);
     expect(out.legs).toHaveLength(4);
     expect(out.totalDurationSec).toBe(480);
-    expect(g.calls).toHaveLength(1);
+    expect(out.picked).toBe('google');
+    // One optimizing call, plus one check of the sweep order (same cost here, so Google's order stays).
+    expect(g.calls.length).toBeLessThanOrEqual(2);
     expect(g.calls[0]).toMatchObject({ optimizeWaypointOrder: true, routingPreference: 'TRAFFIC_AWARE', languageCode: 'he', regionCode: 'IL' });
     // Round trip: destination equals origin.
     expect(g.calls[0].destination).toEqual(g.calls[0].origin);
@@ -77,11 +79,53 @@ describe('optimizeRoute', () => {
     expect(g.calls[0].intermediates).toHaveLength(0);
   });
 
+  it('scooter (default) keeps off highways; car does not', async () => {
+    const g = fakeGoogle(() => route(1, [0]));
+    await optimizeRoute(validate({ origin: TLV, stops: [p('a', 0)] }), 'k', g.fn);
+    expect(g.calls[0].routeModifiers).toEqual({ avoidHighways: true });
+    expect(g.calls[0].travelMode).toBe('DRIVE');
+    const c = fakeGoogle(() => route(1, [0]));
+    await optimizeRoute(validate({ origin: TLV, vehicle: 'car', stops: [p('a', 0)] }), 'k', c.fn);
+    expect(c.calls[0].routeModifiers).toBeUndefined();
+  });
+
+  it('takes the sweep order when Google confirms it is shorter (the far stop first, not last)', async () => {
+    // Start in the middle, end to the north-east. Google leaves the south-west stop for last.
+    const start = { lat: 31.875, lng: 34.74 }, endAt = { lat: 31.95, lng: 34.80 };
+    const sw = { id: 'sw', lat: 31.86, lng: 34.725 }, mid = { id: 'mid', lat: 31.878, lng: 34.745 }, ne = { id: 'ne', lat: 31.89, lng: 34.76 };
+    const g = fakeGoogle((body) => {
+      if (body.optimizeWaypointOrder) return { routes: [{ optimizedIntermediateWaypointIndex: [1, 2, 0], legs: [], duration: '1500s', distanceMeters: 30000 }] };
+      return { routes: [{ legs: [], duration: '1600s', distanceMeters: 21000 }] };
+    });
+    const out = await optimizeRoute(validate({ origin: start, destination: endAt, stops: [sw, mid, ne] }), 'k', g.fn);
+    expect(out.order).toEqual(['sw', 'mid', 'ne']);
+    expect(out.picked).toBe('sweep');
+    expect(out.totalDistanceM).toBe(21000);
+    // A car goes by time, so Google's faster order stays.
+    const c = await optimizeRoute(validate({ origin: start, destination: endAt, vehicle: 'car', stops: [sw, mid, ne] }), 'k', g.fn);
+    expect(c.order).toEqual(['mid', 'ne', 'sw']);
+    expect(c.picked).toBe('google');
+  });
+
   it('maps Google errors to clear Hebrew errors', async () => {
     const fn = (async () => new Response('denied', { status: 403 })) as unknown as typeof fetch;
     await expect(optimizeRoute(validate({ origin: TLV, stops: [p('a', 0)] }), 'k', fn)).rejects.toMatchObject({ status: 502 });
     const quota = (async () => new Response('', { status: 429 })) as unknown as typeof fetch;
     await expect(optimizeRoute(validate({ origin: TLV, stops: [p('a', 0)] }), 'k', quota)).rejects.toMatchObject({ status: 429 });
+  });
+});
+
+describe('sweepOrder', () => {
+  it('visits points along the way from start to end', () => {
+    const from = { lat: 31.85, lng: 34.70 }, to = { lat: 31.95, lng: 34.80 };
+    const mids = [0.08, 0.02, 0.05, 0.03].map((d) => ({ lat: 31.85 + d, lng: 34.70 + d }));
+    expect(sweepOrder(from, to, mids)).toEqual([1, 3, 2, 0]);
+  });
+  it('uncrosses a nearest-neighbour path with 2-opt', () => {
+    const from = { lat: 31.80, lng: 34.70 }, to = { lat: 31.80, lng: 34.80 };
+    const mids = [{ lat: 31.90, lng: 34.72 }, { lat: 31.81, lng: 34.72 }, { lat: 31.90, lng: 34.78 }, { lat: 31.81, lng: 34.78 }];
+    // Shortest: from -> up the west side, across the top, down the east side -> to.
+    expect(sweepOrder(from, to, mids)).toEqual([1, 0, 2, 3]);
   });
 });
 
