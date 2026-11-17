@@ -1,12 +1,12 @@
 -- Supabase only, after schema.sql. Creates a test company, an admin, two couriers and today's route for courier 1.
 -- First create the three users in Supabase: Authentication > Users > Add user (email + password, "Auto confirm").
--- Then change the three emails below to the ones you created, and run this file in the SQL editor.
+-- Use these emails (or change them below to the ones you created), then run this file in the SQL editor.
 do $$
 declare
   c uuid;
-  admin_id uuid := (select id from auth.users where email = 'admin@example.com');
-  k1 uuid := (select id from auth.users where email = 'courier1@example.com');
-  k2 uuid := (select id from auth.users where email = 'courier2@example.com');
+  admin_id uuid := (select id from auth.users where email = 'admin@passit.test');
+  k1 uuid := (select id from auth.users where email = 'courier1@passit.test');
+  k2 uuid := (select id from auth.users where email = 'courier2@passit.test');
   r uuid;
   d date := (now() at time zone 'Asia/Jerusalem')::date;
 begin
