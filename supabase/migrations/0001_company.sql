@@ -1,3 +1,4 @@
+-- Migration 0001: company mode base schema. Applied to the PassIT Supabase project on 2026-11-17 (run by hand in the SQL editor).
 -- PassIT company mode, spike schema. Written for Supabase (Postgres 15+): paste into the SQL editor as is.
 -- Locally it runs on plain Postgres after supabase-stub.sql, which fakes auth.uid() and the two API roles.
 --

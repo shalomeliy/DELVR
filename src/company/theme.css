@@ -1,0 +1,12 @@
+/* Company mode theme, from the approved design. Scoped under .co so the solo app is untouched. */
+@import url('https://fonts.googleapis.com/css2?family=Rubik:wght@500;700&family=Heebo:wght@400;500;700&display=swap');
+
+.co {
+  --bg: #0A0E17; --panel: #121826; --line: #1F2838; --text: #EEF2F8; --muted: #8B97AD;
+  --live: #C8F560; --ok: #34D399; --paste: #FBBF24; --fail: #FB7185; --todo: #243047;
+  min-height: 100dvh; margin: 0; padding: 16px; box-sizing: border-box;
+  background: var(--bg); color: var(--text); font-family: Heebo, system-ui, sans-serif;
+}
+.co-title { font-family: Rubik, Heebo, sans-serif; font-weight: 700; font-size: 24px; margin: 0 0 12px; }
+.co-live { color: var(--live); }
+.co-muted { color: var(--muted); }

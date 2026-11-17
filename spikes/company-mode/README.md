@@ -5,18 +5,18 @@
 ## מה יש פה
 | קובץ | מה |
 |---|---|
-| `schema.sql` | הסכמה ל-Supabase: טבלאות, הרשאות (RLS), `mark_stop`, `add_stop`, `set_order`, `daily_report`, תשלומים (`open_payout`, `adjust_line`, `add_manual_line`, `approve_payout`), סגירת חודש (`month_summary`, `prepare_month`, `approve_month`, `prepare_last_month_all`) וסיבות כישלון (`fail_reasons`) |
-| `supabase-stub.sql` | רק לבדיקה מקומית: מזייף את `auth.uid()` ואת התפקידים של Supabase על Postgres רגיל |
-| `test.sql`, `run-tests.sh` | 69 בדיקות על Postgres אמיתי. `./run-tests.sh` (צריך Postgres 15+ מותקן) |
-| `outbox.test.mjs` | 7 בדיקות לתור הסימונים האופליין. `node --test spikes/company-mode/outbox.test.mjs` |
+| `../../supabase/migrations/0001_company.sql` (עבר לשם) | הסכמה ל-Supabase: טבלאות, הרשאות (RLS), `mark_stop`, `add_stop`, `set_order`, `daily_report`, תשלומים (`open_payout`, `adjust_line`, `add_manual_line`, `approve_payout`), סגירת חודש (`month_summary`, `prepare_month`, `approve_month`, `prepare_last_month_all`) וסיבות כישלון (`fail_reasons`) |
+| `../../tests/db/supabase-stub.sql` (עבר לשם) | רק לבדיקה מקומית: מזייף את `auth.uid()` ואת התפקידים של Supabase על Postgres רגיל |
+| `../../tests/db/` (עבר לשם) | בדיקות מסד הנתונים. `npm run test:db` (צריך Postgres 15+ מותקן) |
+| `../../tests/outbox.test.ts` (עבר לשם) | 7 בדיקות לתור הסימונים האופליין, רצות ב-`npm test` |
 | `seed.sql` | ל-Supabase: חברת בדיקה, מנהל, שני שליחים ומסלול להיום |
 | `../../public/spike/company.html` | דף הבדיקה החי (מנהל ושליח באותו דף, לפי מי שמתחבר). יושב ב-`public` כדי שיעלה ל-Vercel. **למחוק לפני מיזוג** |
-| `../../public/spike/outbox.mjs` | התור עצמו, משותף לדף ולבדיקות |
+| `../../public/spike/outbox.mjs` | עותק התור לדף הספייק. הגרסה האמיתית: `src/company/outbox.ts` |
 | `../../public/spike/supabase.js` | supabase-js 2.118.0 (UMD) מועתק מחבילת npm, כדי שהדף לא יהיה תלוי ב-CDN |
 
 ## בדיקה חיה (כ-15 דקות, צריך אותך)
 1. **Supabase:** נכנסים ל-supabase.com, יוצרים פרויקט חינמי (אזור: Frankfurt או הכי קרוב).
-2. **SQL Editor:** מדביקים ומריצים את `schema.sql` (לא את ה-stub).
+2. **SQL Editor:** מדביקים ומריצים את `supabase/migrations/0001_company.sql` (לא את ה-stub).
 3. **Authentication > Users > Add user:** שלושה משתמשים עם אימייל וסיסמה, עם "Auto Confirm User".
 4. **SQL Editor:** משנים את שלושת המיילים בראש `seed.sql` ומריצים.
 5. **Project Settings > API:** מעתיקים את Project URL ואת ה-anon (או publishable) key.
@@ -27,6 +27,6 @@
    - במחשב: מוסיפים כתובת חדשה. **יעד: בטלפון קופץ "המסלול עודכן" והעצירה מופיעה.**
    - במחשב: "דוח יומי", "פתח תשלום", "שנה" על שורה (חייבים סיבה), "אשר תשלום". אחרי האישור, סימון בטלפון צריך להיכשל עם "day already paid".
    - "סיכום חודש" ואז "סגור חודש": נדחה כל עוד יש יום שלא אושר.
-   - (לא חובה) תזמון ה-1 לחודש: Database > Extensions > pg_cron, ואז השורה שבסוף `schema.sql`.
+   - (לא חובה) תזמון ה-1 לחודש: Database > Extensions > pg_cron, ואז השורה שבסוף `0001_company.sql`.
    - (לא חובה) "בדיקת GPS: התחל" בטלפון, מכבים מסך לשתי דקות, מדליקים. "הפער הארוך" מראה כמה זמן הטלפון לא דיווח מיקום.
 8. שולחים לי את התוצאות (או צילום מסך של שני המסכים).

@@ -3,13 +3,7 @@
 \pset tuples_only on
 \pset format unaligned
 
-create table t_results (n serial, name text, pass boolean);
-create function ok(p_name text, p_pass boolean) returns text language sql security definer as $$
-  insert into t_results (name, pass) values (p_name, coalesce(p_pass, false))
-  returning case when pass then 'PASS  ' else 'FAIL  ' end || name
-$$;
-grant execute on function ok(text, boolean) to authenticated, anon;
-grant execute on function t_rows(text), t_error(text) to authenticated, anon;
+-- ok(), t_rows() and t_error() come from helpers.sql.
 
 -- People: company 1 has admin A and couriers K1, K2. Company 2 has admin B.
 \set A  '''aaaaaaaa-0000-0000-0000-000000000001'''
