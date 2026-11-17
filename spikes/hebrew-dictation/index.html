@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Delvr ספייק: הקראת כתובות</title>
+<title>PassIT ספייק: הקראת כתובות</title>
 <style>
   :root { --bg:#fff; --fg:#1a1a1a; --muted:#666; --line:#ddd; --ok:#1b7f3b; --bad:#b3261e; --warn:#8a5a00; --accent:#1f5eff; }
   @media (prefers-color-scheme: dark) { :root { --bg:#141414; --fg:#eee; --muted:#aaa; --line:#333; --ok:#5cc97f; --bad:#ff8a80; --warn:#f0c060; --accent:#7ea2ff; } }
@@ -23,7 +23,7 @@
 </style>
 </head>
 <body>
-<h1>ספייק Delvr: הקראה בעברית לכתובות</h1>
+<h1>ספייק PassIT: הקראה בעברית לכתובות</h1>
 <p class="muted">מקריאים רשימת כתובות ברצף. הדף מתמלל, מפצל לכתובות, ומאמת כל אחת מול Google. אחר כך מסמנים בכל שורה אם היא נכונה.</p>
 
 <div class="row">
@@ -189,7 +189,7 @@ $('geocode').onclick = async () => {
 
 $('export').onclick = () => {
   const blob = new Blob([JSON.stringify({ when: new Date().toISOString(), start: $('start').value, startCity: startCity(), transcript: $('transcript').value, rows }, null, 2)], { type: 'application/json' });
-  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `delvr-spike-${Date.now()}.json`; a.click();
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `passit-spike-${Date.now()}.json`; a.click();
 };
 
 // How many addresses were actually read out, so missed ones count as failures.

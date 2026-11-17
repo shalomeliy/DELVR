@@ -1,4 +1,4 @@
-# 📦 DELVR
+# 📦 PassIT
 
 <p align="center">
   <img src="https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript" />
@@ -20,7 +20,7 @@
 תהליך מהיר המותאם לעבודה שוטפת:
 
 1. **פעם ראשונה בלבד:** לחיצה כפולה על הקובץ `set-google-key.bat`, הדבקת מפתח ה-Google API ולחיצת Enter (המפתח נשמר מקומית בקובץ `.env.local`).
-2. **הפעלת המערכת:** לחיצה כפולה על `start-delvr.bat`. בפעם הראשונה יותקנו החבילות הנדרשות אוטומטית, ולאחר מכן ייפתח דפדפן Chrome בכתובת:  
+2. **הפעלת המערכת:** לחיצה כפולה על `start-passit.bat`. בפעם הראשונה יותקנו החבילות הנדרשות אוטומטית, ולאחר מכן ייפתח דפדפן Chrome בכתובת:  
    👉 `http://localhost:5173`
 
 > 🔑 **דרישות ב-Google Cloud:** יש לוודא שמופעלים ה-APIs הבאים:  

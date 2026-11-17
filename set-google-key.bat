@@ -9,5 +9,5 @@ if "%KEY%"=="" (echo No key entered. & pause & exit /b 1)
 > .env.local echo VITE_GOOGLE_MAPS_KEY=%KEY%
 >> .env.local echo GOOGLE_ROUTES_KEY=%KEY%
 echo.
-echo Saved. Now double-click start-delvr.bat
+echo Saved. Now double-click start-passit.bat
 pause

@@ -13,7 +13,7 @@ export function Archive({ onClose, onNotice }: Props) {
   useEffect(() => { loadRoutes().then((r) => setRoutes(r.sort((a, b) => routeTime(b) - routeTime(a)))); }, []);
 
   const exportRoute = async (r: ArchivedRoute) => {
-    const how = await shareFile(routeCsv(r.stops, routeTime(r), r.startedAt), `delvr-route-${dayKey(routeTime(r))}.csv`, 'text/csv', 'דוח מסלול');
+    const how = await shareFile(routeCsv(r.stops, routeTime(r), r.startedAt), `passit-route-${dayKey(routeTime(r))}.csv`, 'text/csv', 'דוח מסלול');
     logInfo('report_archived_route', { id: r.id, how });
     if (how === 'downloaded') onNotice('הדוח ירד לטלפון (בתיקיית ההורדות). אפשר לפתוח אותו ב-Excel או לצרף בוואטסאפ');
     if (how === 'copied') onNotice('הדוח הועתק. הדבק אותו בוואטסאפ או במייל');

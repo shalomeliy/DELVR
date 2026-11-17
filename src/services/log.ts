@@ -4,7 +4,7 @@
 export type LogLevel = 'info' | 'warn' | 'error';
 export interface LogEntry { t: string; level: LogLevel; event: string; data?: unknown }
 
-const STORE = 'delvr_log';
+const STORE = 'delvr_log'; // old prefix kept so existing logs survive the rename to PassIT
 const MAX = 300;
 let entries: LogEntry[] = [];
 try { entries = JSON.parse(localStorage.getItem(STORE) || '[]'); } catch { entries = []; }
@@ -56,7 +56,7 @@ async function permission(name: string) {
 /** Everything useful for debugging, as one text report. */
 export async function buildReport(extra: Record<string, unknown>): Promise<string> {
   const device = {
-    app: 'Delvr', build: import.meta.env.VITE_BUILD ?? 'dev', url: location.origin,
+    app: 'PassIT', build: import.meta.env.VITE_BUILD ?? 'dev', url: location.origin,
     userAgent: navigator.userAgent, language: navigator.language, online: navigator.onLine,
     screen: `${screen.width}x${screen.height} @${devicePixelRatio}`,
     standalone: matchMedia('(display-mode: standalone)').matches,
@@ -89,6 +89,6 @@ export async function shareFile(content: string, name: string, type: string, tit
 }
 
 export function shareReport(report: string) {
-  const name = `delvr-log-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')}.txt`;
-  return shareFile(report, name, 'text/plain', 'לוגים של Delvr');
+  const name = `passit-log-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')}.txt`;
+  return shareFile(report, name, 'text/plain', 'לוגים של PassIT');
 }

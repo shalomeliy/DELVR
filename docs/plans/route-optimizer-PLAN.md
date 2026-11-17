@@ -1,4 +1,4 @@
-# תוכנית: סידור מסלול לשליח (Delvr v1)
+# תוכנית: סידור מסלול לשליח (PassIT v1)
 
 סטטוס: טיוטה לאישור. נכתב 2026-10-20.
 קלט: ספק `docs/specs/route-optimizer.md` (אושר), ספייק `docs/spikes/hebrew-dictation.md` (GO בתנאי), פירוק `docs/teardowns/spoke-route-planner.md`.
@@ -27,7 +27,7 @@
 
 ## 4. קבצים
 ```
-delvr/
+passit/
   index.html, vite.config.ts            הגדרת PWA (manifest ו-service worker) ו-RTL
   src/
     domain/types.ts                     Stop, Route, AddressMemory (לפי סעיף "מודל נתונים" בספק)
@@ -90,4 +90,4 @@ delvr/
 ## מה צריך מהמשתמש לפני שלב 1
 1. מפתח Google: פרויקט ב-Google Cloud עם Maps JavaScript API, Geocoding API ו-Routes API, וחשבון חיוב.
 2. חשבון Vercel (חינם), כדי שהאפליקציה תעלה לכתובת אמיתית.
-3. ריפו ב-GitHub ל-Delvr. כרגע התיקייה לא מנוהלת ב-git.
+3. ריפו ב-GitHub ל-PassIT. כרגע התיקייה לא מנוהלת ב-git.

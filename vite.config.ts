@@ -7,7 +7,7 @@ import { VitePWA } from 'vite-plugin-pwa';
 // Runs api/optimize.ts inside `npm run dev`, so the whole app works locally without Vercel.
 function devApi(routesKey: string | undefined): Plugin {
   return {
-    name: 'delvr-dev-api',
+    name: 'passit-dev-api',
     configureServer(server) {
       server.middlewares.use('/api/optimize', async (req: IncomingMessage, res) => {
         const chunks: Buffer[] = [];
@@ -35,8 +35,8 @@ export default defineConfig(({ mode }) => {
         injectRegister: false,
         includeAssets: ['favicon.svg'],
         manifest: {
-          name: 'Delvr - מסלול לשליח',
-          short_name: 'Delvr',
+          name: 'PassIT - מסלול לשליח',
+          short_name: 'PassIT',
           description: 'מקריאים כתובות בעברית ומקבלים את הסדר הכי מהיר',
           lang: 'he', dir: 'rtl',
           start_url: '/', display: 'standalone',
