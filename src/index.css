@@ -106,3 +106,11 @@ ol.route li.pasted { opacity: .6; }
 .due-edit { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 .due-edit input { flex: 1 1 100%; min-width: 0; }
 .due-edit button { flex: 1; }
+.settings { position: relative; }
+.gear { gap: 6px; padding: 8px 12px; }
+.gear span { font-size: 1.2rem; line-height: 1; }
+.menu { position: absolute; inset-inline-end: 0; top: calc(100% + 6px); z-index: 50; width: min(280px, calc(100vw - 32px)); background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 6px; box-shadow: 0 10px 30px rgba(0,0,0,.25); display: flex; flex-direction: column; }
+.menu > button { border: none; background: none; justify-content: flex-start; border-radius: 8px; }
+.menu > button:hover { background: var(--bg); }
+.menu-sec { border-top: 1px solid var(--line); margin-top: 4px; padding: 10px 8px 4px; }
+.menu-sec .seg { margin: 4px 0 6px; }

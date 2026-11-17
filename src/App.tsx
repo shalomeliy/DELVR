@@ -15,6 +15,7 @@ import { Archive } from './ui/Archive';
 import { Calendar } from './ui/Calendar';
 import { FixList } from './ui/FixList';
 import { RouteView } from './ui/RouteView';
+import { Settings } from './ui/Settings';
 import { StartPoint } from './ui/StartPoint';
 import { StopList } from './ui/StopList';
 
@@ -232,13 +233,8 @@ export default function App() {
     <main className="app">
       <header className="top">
         <h1>PassIT</h1>
-        <div>
-          {view !== 'route' && <button type="button" className="link" onClick={() => setView('route')}>מסלול</button>}
-          {view !== 'calendar' && <button type="button" className="link" onClick={() => setView('calendar')}>יומן</button>}
-          {view !== 'archive' && <button type="button" className="link" onClick={() => setView('archive')}>ארכיון</button>}
-          <button type="button" className="link" onClick={sendLogs}>שלח לוגים</button>
-          {plan.stops.length > 0 && view === 'route' && <button type="button" className="link" onClick={reset}>מסלול חדש</button>}
-        </div>
+        <Settings view={view} canReset={plan.stops.length > 0 && view === 'route'} routeSorted={!!plan.optimized}
+          onView={setView} onReset={reset} onLogs={sendLogs} />
       </header>
       {!hasMapsKey() && <div className="banner bad">חסר מפתח Google. הוסף VITE_GOOGLE_MAPS_KEY לקובץ .env.local</div>}
       {error && <div className="banner bad" role="alert">{error}</div>}
