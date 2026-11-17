@@ -61,7 +61,7 @@ select ok('courier cannot edit the reasons', t_rows($$update fail_reasons set la
 select ok('failed without a reason code is refused', t_error(format($$select mark_stop(%L, 'failed', 'טקסט', 0, 0, 'ev-x')$$, :S2)) = 'bad fail reason');
 select ok('failed with an unknown code is refused', t_error(format($$select mark_stop(%L, 'failed', null, 0, 0, 'ev-x', now(), 'made_up')$$, :S2)) = 'bad fail reason');
 select ok('"other" without text is refused', t_error(format($$select mark_stop(%L, 'failed', '  ', 0, 0, 'ev-x', now(), 'other')$$, :S2)) = 'reason text required');
-select ok('failed with a code and a note works', (mark_stop(:S2, 'failed', 'השאיר הודעה', 31.90, 34.80, 'ev-2', now(), 'no_answer')).fail_code = 'no_answer');
+select ok('failed with a code and a note works', (mark_stop(:S2, 'failed', 'דירה 4 לא קיימת', 31.90, 34.80, 'ev-2', now(), 'not_known')).fail_code = 'not_known');
 select ok('pasted works', (mark_stop(:S3, 'pasted', null, 31.87, 34.74, 'ev-3')).delivery = 'pasted');
 select ok('courier cannot mark another courier''s stop', t_error(format($$select mark_stop(%L, 'delivered', null, 0, 0, 'ev-4')$$, :S4)) = 'not your route');
 select ok('first mark moves route to active', (select status from routes) = 'active');
@@ -100,7 +100,7 @@ select ok('last stop pasted', (mark_stop(:S3, 'pasted', null, 31.87, 34.74, 'ev-
 set request.jwt.claim.sub = :A;
 select ok('daily report has 4 rows', (select count(*) from daily_report(:C1, :K1, '2026-11-17')) = 4);
 select ok('daily report total is 40', (select sum(price) from daily_report(:C1, :K1, '2026-11-17')) = 40);
-select ok('failed reason in the report', (select reason_label || ' / ' || reason from daily_report(:C1, :K1, '2026-11-17') where outcome = 'failed') = 'לא ענה לטלפון / השאיר הודעה');
+select ok('failed reason in the report', (select reason_label || ' / ' || reason from daily_report(:C1, :K1, '2026-11-17') where outcome = 'failed') = 'הנמען לא מוכר בכתובת / דירה 4 לא קיימת');
 
 -- Payments: open, fix one line, add a bonus, approve.
 select ok('admin opens the payout', open_payout(:C1, :K1, '2026-11-17') is not null);
