@@ -1,16 +1,20 @@
 import type { Stop, StopOrder } from '../domain/types';
+import { MAX_TIMED } from '../domain/types';
+import { DueTime } from './DueTime';
 
 interface Props {
   stops: Stop[];
   onOrder: (id: string, order: StopOrder) => void;
   onRemove: (id: string) => void;
+  onDue: (id: string, due: string | undefined) => void;
 }
 
 const ORDER_LABEL: Record<StopOrder, string> = { first: 'ראשונה', auto: 'אוטומטי', last: 'אחרונה' };
 
-export function StopList({ stops, onOrder, onRemove }: Props) {
+export function StopList({ stops, onOrder, onRemove, onDue }: Props) {
   const shown = stops.filter((s) => s.verify !== 'needs_fix');
   if (!shown.length) return null;
+  const canAdd = stops.filter((s) => s.dueAt && s.delivery === 'todo').length < MAX_TIMED;
   return (
     <section className="card">
       <h2>העצירות שלך</h2>
@@ -20,10 +24,11 @@ export function StopList({ stops, onOrder, onRemove }: Props) {
             <div className="grow">
               <div>{s.address ?? s.input}</div>
               {s.verify === 'pending' && <div className="muted small">מאמת מול Google...</div>}
+              <div className="small"><DueTime due={s.dueAt} canAdd={canAdd} onChange={(d) => onDue(s.id, d)} /></div>
             </div>
-            <select value={s.order} onChange={(e) => onOrder(s.id, e.target.value as StopOrder)} aria-label="מיקום במסלול">
+            {!s.dueAt && <select value={s.order} onChange={(e) => onOrder(s.id, e.target.value as StopOrder)} aria-label="מיקום במסלול">
               {(Object.keys(ORDER_LABEL) as StopOrder[]).map((o) => <option key={o} value={o}>{ORDER_LABEL[o]}</option>)}
-            </select>
+            </select>}
             <button type="button" className="icon" onClick={() => onRemove(s.id)} aria-label={`מחק ${s.input}`}>✕</button>
           </li>
         ))}

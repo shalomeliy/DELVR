@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { earnings, fmtShekel } from '../domain/history';
 import { endModeOf, fmtClock, fmtDuration, fmtKm, orderedStops } from '../domain/plan';
 import type { Plan, Stop } from '../domain/types';
+import { MAX_TIMED } from '../domain/types';
+import { DueTime } from './DueTime';
 import { googleMapsUrl, wazeUrl } from '../services/navigation';
 import { FailReason } from './FailReason';
 import { MapView } from './MapView';
@@ -16,13 +18,14 @@ interface Props {
   onReport: () => void;
   /** The courier opened navigation to a stop; the first time marks the actual start of the route. */
   onNavigate: () => void;
+  onDue: (id: string, due: string | undefined) => void;
   busy: boolean;
 }
 
 const MAP_KEY = 'delvr_map'; // old prefix kept so the saved map setting survives the rename
 const STATUS = { delivered: '✓ נמסר', pasted: '✓ הדבקה', failed: '✕ נכשל' } as const;
 
-export function RouteView({ plan, onDelivery, onReoptimize, onRemove, onEdit, onReport, onNavigate, busy }: Props) {
+export function RouteView({ plan, onDelivery, onReoptimize, onRemove, onEdit, onReport, onNavigate, onDue, busy }: Props) {
   const opt = plan.optimized!;
   const stops = orderedStops(plan);
   const addedAt = new Map(plan.stops.map((s, i) => [s.id, i + 1]));
@@ -44,6 +47,10 @@ export function RouteView({ plan, onDelivery, onReoptimize, onRemove, onEdit, on
   const setShowMap = (fn: (v: boolean) => boolean) => setShowMapState((v) => { const next = fn(v); try { localStorage.setItem(MAP_KEY, next ? 'on' : 'off'); } catch { /* ignore */ } return next; });
   // The stop whose failure reason box is open.
   const [failing, setFailing] = useState<string | null>(null);
+  const deadline = new Map((opt.deadlines ?? []).map((d) => [d.id, d]));
+  const late = (opt.deadlines ?? []).filter((d) => d.lateSec >= 60 && plan.stops.some((s) => s.id === d.id && s.delivery === 'todo'));
+  const canAddDue = plan.stops.filter((s) => s.dueAt && s.delivery === 'todo').length < MAX_TIMED;
+  const nameOf = (id: string) => { const s = plan.stops.find((x) => x.id === id); return s ? (s.address ?? s.input).replace(/,\s*ישראל$/, '') : ''; };
   const counts = { delivered: 0, pasted: 0, failed: 0 };
   for (const s of plan.stops) if (s.delivery !== 'todo') counts[s.delivery]++;
 
@@ -53,9 +60,15 @@ export function RouteView({ plan, onDelivery, onReoptimize, onRemove, onEdit, on
       <div className="totals">
         <div><b>{fmtDuration(opt.totalDurationSec)}</b><span>נסיעה</span></div>
         <div><b>{fmtKm(opt.totalDistanceM)}</b><span>מרחק</span></div>
-        <div><b>{fmtClock(opt.at + opt.totalDurationSec * 1000)}</b><span>סיום משוער</span></div>
+        <div><b>{fmtClock(opt.at + (opt.totalDurationSec + (opt.waitSec ?? 0)) * 1000)}</b><span>סיום משוער</span></div>
       </div>
-      <p className="muted small">זמני נסיעה לפי Google, כולל תנועה. לא כולל זמן עצירה בכל כתובת. {stale ? 'שינית כתובות אחרי הסידור, אז הזמנים והקו במפה לא מעודכנים. לחץ "סדר מחדש" לעדכון. ' : ''}{done ? `${done} מתוך ${plan.stops.length} טופלו: ${counts.delivered} נמסרו, ${counts.pasted} הדבקות, ${counts.failed} נכשלו. לתשלום עד עכשיו: ${fmtShekel(earnings(counts))}.` : ''}</p>
+      {late.length > 0 && !stale && (
+        <div className="banner bad" role="alert">
+          {late.map((d) => <div key={d.id}>לא תספיק להגיע ל{nameOf(d.id)} ב-{fmtClock(d.dueAt)}. הגעה משוערת {fmtClock(d.etaAt)}, איחור של {fmtDuration(d.lateSec)}.</div>)}
+          <div className="small">זה הסדר הכי מהיר אליה. אפשר להזיז את השעה או לוותר על עצירות.</div>
+        </div>
+      )}
+      <p className="muted small">זמני נסיעה לפי Google, כולל תנועה. לא כולל זמן עצירה בכל כתובת{opt.deadlines?.length ? ` (בחישוב "בול בזמן" מניח 3 דק' בכל עצירה${opt.waitSec ? `, וכולל ${fmtDuration(opt.waitSec)} המתנה` : ''})` : ''}. {stale ? 'שינית כתובות אחרי הסידור, אז הזמנים והקו במפה לא מעודכנים. לחץ "סדר מחדש" לעדכון. ' : ''}{done ? `${done} מתוך ${plan.stops.length} טופלו: ${counts.delivered} נמסרו, ${counts.pasted} הדבקות, ${counts.failed} נכשלו. לתשלום עד עכשיו: ${fmtShekel(earnings(counts))}.` : ''}</p>
       <div className="route-tools">
         <button type="button" className="ghost" onClick={() => setShowMap((v) => !v)}>{showMap ? 'הסתר מפה' : 'הצג מפה'}</button>
         <button type="button" className="ghost" onClick={onReport}>ייצא דוח</button>
@@ -92,6 +105,18 @@ export function RouteView({ plan, onDelivery, onReoptimize, onRemove, onEdit, on
                   {leg && `${fmtDuration(leg.durationSec)} · ${fmtKm(leg.distanceM)}`}
                   {addedAt.get(s.id) !== i + 1 && ` · היה מספר ${addedAt.get(s.id)} ברשימה`}
                 </div>
+                {s.delivery === 'todo' && (
+                  <div className="small">
+                    <DueTime due={s.dueAt} canAdd={canAddDue} onChange={(d) => onDue(s.id, d)} />
+                    {s.dueAt && !stale && deadline.has(s.id) && (() => {
+                      const d = deadline.get(s.id)!;
+                      return d.lateSec >= 60 ? <span className="bad"> · הגעה {fmtClock(d.etaAt)}, איחור {fmtDuration(d.lateSec)}</span>
+                        : d.waitSec >= 60 ? <span className="warn"> · הגעה {fmtClock(d.etaAt)}, {fmtDuration(d.waitSec)} המתנה</span>
+                        : <span className="ok"> · הגעה {fmtClock(d.etaAt)}, בזמן</span>;
+                    })()}
+                    {s.dueAt && (stale || !deadline.has(s.id)) && <span className="muted"> · לחץ "סדר מחדש" כדי לתכנן לפי השעה</span>}
+                  </div>
+                )}
                 {s.location && s.delivery === 'todo' && failing !== s.id && (
                   <div className="actions">
                     <a className="btn nav" href={wazeUrl(s.location, s.address)} rel="noreferrer" onClick={onNavigate}>Waze</a>
