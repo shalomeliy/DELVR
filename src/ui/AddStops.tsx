@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
+import { readDraft, writeDraft } from '../store/persist';
 import { speechSupported, startDictation, type Dictation } from '../services/speech';
 
 interface Props { count: number; max: number; onAdd: (text: string) => void }
 
 export function AddStops({ count, max, onAdd }: Props) {
-  const [text, setText] = useState('');
+  // What was typed or dictated but not yet added survives a refresh or an app update.
+  const [text, setText] = useState(readDraft);
   const [interim, setInterim] = useState('');
   const [rec, setRec] = useState<Dictation | null>(null);
   const [err, setErr] = useState('');
@@ -13,6 +15,7 @@ export function AddStops({ count, max, onAdd }: Props) {
   // otherwise they refill the box and the same addresses get added twice.
   const session = useRef(0);
   useEffect(() => () => rec?.stop(), [rec]);
+  useEffect(() => writeDraft([text, interim].filter(Boolean).join(' ')), [text, interim]);
 
   const toggle = () => {
     if (rec) { rec.stop(); setRec(null); setInterim(''); return; }

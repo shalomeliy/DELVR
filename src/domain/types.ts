@@ -60,6 +60,8 @@ export interface Plan {
   optimized?: Optimized;
   /** When the courier first opened Waze or Google for a stop of this route: the actual start. */
   startedAt?: number;
+  /** When this copy was saved on the phone, to pick the newer of the two saved copies after a reload. */
+  savedAt?: number;
 }
 
 export const MAX_STOPS = 25;
