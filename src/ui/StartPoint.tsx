@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import type { Place } from '../domain/types';
+import { getVehicle, setVehicle, type Vehicle } from '../services/vehicle';
 
 interface Props {
   start: Place;
@@ -32,6 +33,8 @@ function PlaceInput({ label, place, placeholder, onVerify, onClear }: { label: s
 
 export function StartPoint({ start, end, onVerify, onHere, onClearEnd }: Props) {
   const [locating, setLocating] = useState(false);
+  const [vehicle, setVehicleState] = useState<Vehicle>(getVehicle);
+  const pick = (v: Vehicle) => { setVehicle(v); setVehicleState(v); };
   return (
     <section className="card">
       <h2>נקודת יציאה</h2>
@@ -43,6 +46,14 @@ export function StartPoint({ start, end, onVerify, onHere, onClearEnd }: Props) 
         <PlaceInput key={`e-${end?.input ?? ''}`} label="כתובת סיום מועדפת (לא חובה)" place={end ?? { input: '' }}
           placeholder="כתובת מלאה, רחוב ועיר, או רק עיר" onVerify={(t) => onVerify('end', t)} onClear={onClearEnd} />
         {!end?.location && <div className="muted small">בלי כתובת סיום, המסלול חוזר לנקודת היציאה.</div>}
+      </div>
+      <div className="field" style={{ marginTop: 12 }}>
+        <label>על מה רוכבים</label>
+        <div className="inline">
+          <button type="button" className={vehicle === 'scooter' ? 'primary' : 'ghost'} aria-pressed={vehicle === 'scooter'} onClick={() => pick('scooter')}>קטנוע</button>
+          <button type="button" className={vehicle === 'car' ? 'primary' : 'ghost'} aria-pressed={vehicle === 'car'} onClick={() => pick('car')}>רכב</button>
+        </div>
+        <div className="muted small">{vehicle === 'scooter' ? 'בלי כבישים מהירים, והמסלול הקצר בק"מ מנצח.' : 'המסלול המהיר בזמן מנצח.'}</div>
       </div>
     </section>
   );

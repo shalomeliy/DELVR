@@ -4,13 +4,20 @@
 export interface LatLngIn { lat: number; lng: number }
 export interface StopIn extends LatLngIn { id: string; order?: 'first' | 'auto' | 'last' }
 /** open: the route ends at the last stop instead of returning to the origin or a destination. */
-export interface OptimizeInput { origin: LatLngIn; destination?: LatLngIn | null; open?: boolean; stops: StopIn[] }
+/**
+ * scooter: Google has no motorcycle routing in Israel (TWO_WHEELER is not offered there), so a scooter is a
+ * car that keeps off highways, and between two orders the shorter one in km wins. car: the faster one wins.
+ */
+export type Vehicle = 'scooter' | 'car';
+export interface OptimizeInput { origin: LatLngIn; destination?: LatLngIn | null; open?: boolean; vehicle?: Vehicle; stops: StopIn[] }
 export interface OptimizeOutput {
   order: string[];
   legs: { durationSec: number; distanceM: number }[];
   totalDurationSec: number;
   totalDistanceM: number;
   polyline?: string;
+  /** Which order won: Google's own optimizer or the geometric sweep checked against Google. */
+  picked?: 'google' | 'sweep';
 }
 
 export const MAX_STOPS = 25;
@@ -38,7 +45,7 @@ export function validate(body: unknown): OptimizeInput {
     ids.add(s.id);
   }
   for (const p of [b.origin, b.destination, ...b.stops]) if (p && !inIsrael(p)) throw new HttpError(400, 'כל הכתובות צריכות להיות בישראל');
-  return { origin: b.origin, destination: b.destination ?? null, open: b.open === true && b.destination == null, stops: b.stops.map((s) => ({ id: s.id, lat: s.lat, lng: s.lng, order: s.order ?? 'auto' })) };
+  return { origin: b.origin, destination: b.destination ?? null, open: b.open === true && b.destination == null, vehicle: b.vehicle === 'car' ? 'car' : 'scooter', stops: b.stops.map((s) => ({ id: s.id, lat: s.lat, lng: s.lng, order: s.order ?? 'auto' })) };
 }
 
 const wp = (p: LatLngIn) => ({ location: { latLng: { latitude: p.lat, longitude: p.lng } } });
@@ -51,13 +58,14 @@ interface GRoute {
   polyline?: { encodedPolyline?: string };
 }
 
-async function computeRoute(fetchFn: typeof fetch, key: string, origin: LatLngIn, destination: LatLngIn, mids: LatLngIn[], optimize: boolean): Promise<GRoute> {
+async function computeRoute(fetchFn: typeof fetch, key: string, vehicle: Vehicle, origin: LatLngIn, destination: LatLngIn, mids: LatLngIn[], optimize: boolean): Promise<GRoute> {
   const res = await fetchFn(ROUTES_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': key, 'X-Goog-FieldMask': FIELDS },
     body: JSON.stringify({
       origin: wp(origin), destination: wp(destination), intermediates: mids.map(wp),
       travelMode: 'DRIVE', routingPreference: 'TRAFFIC_AWARE',
+      ...(vehicle === 'scooter' ? { routeModifiers: { avoidHighways: true } } : {}),
       optimizeWaypointOrder: optimize && mids.length > 1,
       languageCode: 'he', regionCode: 'IL', units: 'METRIC',
     }),
@@ -80,6 +88,39 @@ function distanceM(a: LatLngIn, b: LatLngIn) {
 }
 
 /**
+ * A second opinion on the order: nearest neighbour then 2-opt on straight-line distance, with both ends
+ * fixed. Google's optimizer is a heuristic tuned for cars and sometimes leaves a far stop for the end and
+ * reaches the destination by a highway detour; a sweep that ends near the destination avoids that.
+ * Returns indexes into mids.
+ */
+export function sweepOrder(from: LatLngIn, to: LatLngIn, mids: LatLngIn[]): number[] {
+  const n = mids.length;
+  if (n < 2) return mids.map((_, i) => i);
+  const left = new Set(mids.map((_, i) => i));
+  const path: number[] = [];
+  let at = from;
+  while (left.size) {
+    let best = -1;
+    for (const i of left) if (best < 0 || distanceM(at, mids[i]) < distanceM(at, mids[best])) best = i;
+    path.push(best); left.delete(best); at = mids[best];
+  }
+  const pt = (k: number) => (k < 0 ? from : k >= n ? to : mids[path[k]]);
+  for (let improved = true, rounds = 0; improved && rounds < 50; rounds++) {
+    improved = false;
+    for (let i = 0; i < n - 1; i++) {
+      for (let j = i + 1; j < n; j++) {
+        const before = distanceM(pt(i - 1), pt(i)) + distanceM(pt(j), pt(j + 1));
+        const after = distanceM(pt(i - 1), pt(j)) + distanceM(pt(i), pt(j + 1));
+        if (after < before - 1) { path.splice(i, j - i + 1, ...path.slice(i, j + 1).reverse()); improved = true; }
+      }
+    }
+  }
+  return path;
+}
+
+const cost = (r: GRoute, vehicle: Vehicle) => (vehicle === 'scooter' ? r.distanceMeters ?? Infinity : sec(r.duration) || Infinity);
+
+/**
  * Google cannot pin a waypoint, so only the 'auto' stops are optimized, between the last 'first'
  * stop and the first 'last' stop. With pins, a second (non-optimized) call gives the full legs.
  *
@@ -100,15 +141,23 @@ export async function optimizeRoute(input: OptimizeInput, key: string, fetchFn: 
   const end = input.destination ?? input.origin;
   const to = lasts[0] ?? end;
 
-  const opt = await computeRoute(fetchFn, key, from, to, autos, true);
-  const idx = opt.optimizedIntermediateWaypointIndex?.length === autos.length ? opt.optimizedIntermediateWaypointIndex : autos.map((_, i) => i);
+  const vehicle = input.vehicle ?? 'scooter';
+  let opt = await computeRoute(fetchFn, key, vehicle, from, to, autos, true);
+  let idx = opt.optimizedIntermediateWaypointIndex?.length === autos.length ? opt.optimizedIntermediateWaypointIndex : autos.map((_, i) => i);
+  // Check Google's order against the sweep with one more (non-optimizing) call, and keep the cheaper one.
+  let picked: 'google' | 'sweep' = 'google';
+  const sweep = sweepOrder(from, to, autos);
+  if (autos.length > 2 && sweep.join() !== idx.join()) {
+    const alt = await computeRoute(fetchFn, key, vehicle, from, to, sweep.map((i) => autos[i]), false);
+    if (cost(alt, vehicle) < cost(opt, vehicle)) { opt = alt; idx = sweep; picked = 'sweep'; }
+  }
   const ordered = [...firsts, ...idx.map((i) => autos[i]), ...lasts];
 
   // The optimizing call already covers the whole drive unless pinned stops sit outside it.
   const needFull = firsts.length > 0 || (input.open ? lasts.length > 1 : lasts.length > 0);
   const full = !needFull ? opt
-    : input.open ? await computeRoute(fetchFn, key, input.origin, ordered.at(-1)!, ordered.slice(0, -1), false)
-    : await computeRoute(fetchFn, key, input.origin, end, ordered, false);
+    : input.open ? await computeRoute(fetchFn, key, vehicle, input.origin, ordered.at(-1)!, ordered.slice(0, -1), false)
+    : await computeRoute(fetchFn, key, vehicle, input.origin, end, ordered, false);
   const legs = (full.legs ?? []).map((l) => ({ durationSec: sec(l.duration), distanceM: l.distanceMeters ?? 0 }));
   return {
     order: ordered.map((s) => s.id),
@@ -116,6 +165,7 @@ export async function optimizeRoute(input: OptimizeInput, key: string, fetchFn: 
     totalDurationSec: sec(full.duration) || legs.reduce((a, l) => a + l.durationSec, 0),
     totalDistanceM: full.distanceMeters ?? legs.reduce((a, l) => a + l.distanceM, 0),
     polyline: full.polyline?.encodedPolyline,
+    picked,
   };
 }
 
