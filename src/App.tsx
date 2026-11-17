@@ -3,7 +3,7 @@ import { addStops, canOptimize, editInRoute, setDue, orderedStops, removeFromRou
 import { archiveOf } from './domain/archive';
 import { dayKey, routeCsv, withEntry, withoutEntry } from './domain/history';
 import { parseTranscript } from './domain/parser.js';
-import type { Place, Plan, Stop } from './domain/types';
+import type { LatLng, Place, Plan, Stop } from './domain/types';
 import { MAX_STOPS } from './domain/types';
 import { geocode, reverseGeocode } from './services/geocode';
 import { buildReport, logError, logInfo, shareFile, shareReport } from './services/log';
@@ -14,6 +14,7 @@ import { AddStops } from './ui/AddStops';
 import { Archive } from './ui/Archive';
 import { Calendar } from './ui/Calendar';
 import { FixList } from './ui/FixList';
+import { ResortSheet } from './ui/ResortSheet';
 import { RouteView } from './ui/RouteView';
 import { Settings } from './ui/Settings';
 import { StartPoint } from './ui/StartPoint';
@@ -28,6 +29,7 @@ export default function App() {
   const [sortError, setSortError] = useState('');
   const planRef = useRef<Plan | null>(null);
   const [view, setView] = useState<'route' | 'calendar' | 'archive'>('route');
+  const [resorting, setResorting] = useState(false);
 
   const setPlan = useCallback((fn: (p: Plan) => Plan) => {
     setPlanState((prev) => {
@@ -82,19 +84,44 @@ export default function App() {
 
   if (!plan) return <main className="app"><p className="muted">טוען...</p></main>;
 
-  const verifyPlace = async (which: 'start' | 'end', input: string) => {
-    setError('');
+  // The start address repeats every day, so it is looked up in the phone's memory first.
+  const lookupPlace = async (input: string): Promise<Place | string> => {
     try {
-      // The start address repeats every day, so it is looked up in the phone's memory first.
       const mem = await recall(input);
       const city = parseTranscript(input)[0]?.city ?? null;
       const r = mem && isFresh(mem) ? { ok: true, ...mem } : await geocode(input, city);
-      if (!r.location) { setError(`לא מצאתי את "${input}". נסה לכתוב רחוב, מספר ועיר`); return; }
+      if (!r.location) return `לא מצאתי את "${input}". נסה לכתוב רחוב, מספר ועיר`;
       if (r.ok && r.address && !(mem && isFresh(mem))) remember(input, { address: r.address, location: r.location });
-      const place: Place = { input, address: r.address, location: r.location };
-      logInfo('place_set', { which, input, address: r.address });
-      setPlan((p) => (which === 'start' ? { ...p, start: place, optimized: undefined } : { ...p, end: place, optimized: undefined }));
-    } catch (e) { setError((e as Error).message); }
+      return { input, address: r.address, location: r.location };
+    } catch (e) { return (e as Error).message; }
+  };
+
+  const verifyPlace = async (which: 'start' | 'end', input: string) => {
+    setError('');
+    const place = await lookupPlace(input);
+    if (typeof place === 'string') { setError(place); return; }
+    logInfo('place_set', { which, input, address: place.address });
+    setPlan((p) => (which === 'start' ? { ...p, start: place, optimized: undefined } : { ...p, end: place, optimized: undefined }));
+  };
+
+  const locate = () => new Promise<LatLng | string>((resolve) => {
+    if (!navigator.geolocation) { resolve('הדפדפן לא תומך באיתור מיקום'); return; }
+    navigator.geolocation.getCurrentPosition((pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      (err) => resolve(err.code === 1 ? 'אין הרשאה למיקום. אשר גישה בדפדפן, או בחר "כתובת אחרת"' : 'לא הצלחתי לאתר מיקום. בחר "כתובת אחרת"'),
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 });
+  });
+
+  // "סדר מחדש" from the sheet: only stops not yet marked, from the point the courier picked, to the end they typed or back.
+  const resort = async (from: LatLng, end: Place | null) => {
+    setError(''); setSortError(''); setOptimizing(true);
+    try {
+      const current = { ...(planRef.current ?? plan), end };
+      logInfo('resort', { end: end?.address ?? null });
+      const optimized = await optimizePlan(current, undefined, from);
+      setPlan((p) => ({ ...p, end, optimized }));
+      setResorting(false);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } finally { setOptimizing(false); }
   };
 
   const useHere = () => new Promise<void>((resolve) => {
@@ -244,12 +271,13 @@ export default function App() {
         : view === 'archive' ? <Archive onClose={() => setView('route')} onNotice={setNotice} /> : <>
 
       {plan.optimized ? (
-        <RouteView plan={plan} busy={optimizing} onReoptimize={optimize}
+        <RouteView plan={plan} busy={optimizing} onReoptimize={() => setResorting(true)}
           onDelivery={onDelivery} onReport={exportRoute} onEdit={editRouteStop}
           onNavigate={() => { if (!planRef.current?.startedAt) { logInfo('route_started'); setPlan((p) => (p.startedAt ? p : { ...p, startedAt: Date.now() })); } }}
           onRemove={(id) => { logInfo('route_remove', id); setPlan((p) => removeFromRoute(p, id)); }}
           onDue={(id, due) => { logInfo('due_set', { id, due, sorted: true }); setPlan((p) => setDue(p, id, due)); }} />
       ) : null}
+      {plan.optimized && resorting && <ResortSheet end={plan.end} onLookup={lookupPlace} onHere={locate} onGo={resort} onClose={() => setResorting(false)} />}
 
       {!plan.optimized && <StartPoint start={plan.start} end={plan.end} onVerify={verifyPlace} onHere={useHere}
         onClearEnd={() => setPlan((p) => ({ ...p, end: null, optimized: undefined }))} />}

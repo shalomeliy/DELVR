@@ -57,6 +57,8 @@ export interface Optimized {
   deadlines?: Deadline[];
   /** Minutes spent waiting at "בול בזמן" stops reached early, in seconds. Not in totalDurationSec. */
   waitSec?: number;
+  /** Where a re-sort started (the courier's location or an address they typed). Without it the route starts at plan.start. */
+  from?: LatLng;
 }
 
 export interface Plan {

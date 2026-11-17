@@ -1,23 +1,28 @@
 import { dueEpoch, endModeOf, routeOrigin } from '../domain/plan';
-import type { Optimized, Plan } from '../domain/types';
+import type { LatLng, Optimized, Plan } from '../domain/types';
 import { logError, logInfo } from './log';
 import { getVehicle } from './vehicle';
 
-export async function optimizePlan(plan: Plan, signal?: AbortSignal): Promise<Optimized> {
+/**
+ * from: a re-sort that starts at a point the courier picked (their location or a typed address). Without an
+ * end address that route returns to this point, not to the morning's start.
+ */
+export async function optimizePlan(plan: Plan, signal?: AbortSignal, from?: LatLng): Promise<Optimized> {
   const stops = plan.stops.filter((s) => s.delivery === 'todo' && s.location);
-  const origin = routeOrigin(plan);
-  if (!plan.start.location || !origin) throw new Error('חסרה נקודת יציאה מאומתת');
+  const origin = from ?? routeOrigin(plan);
+  const home = from ?? plan.start.location;
+  if (!home || !origin) throw new Error('חסרה נקודת יציאה מאומתת');
   const started = Date.now();
   const timed = stops.filter((s) => s.dueAt).length;
   const vehicle = getVehicle();
-  logInfo('optimize_request', { vehicle, stops: stops.length, pinned: stops.filter((s) => s.order !== 'auto').length, timed, endMode: endModeOf(plan) });
+  logInfo('optimize_request', { vehicle, stops: stops.length, pinned: stops.filter((s) => s.order !== 'auto').length, timed, endMode: endModeOf(plan), from: from ? 'picked' : 'default' });
   const res = await fetch('/api/optimize', {
     method: 'POST', signal,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       origin,
       // Sent even for a round trip: after deliveries the origin is the last stop, not the start.
-      destination: endModeOf(plan) === 'address' ? plan.end?.location ?? null : endModeOf(plan) === 'return' ? plan.start.location : null,
+      destination: endModeOf(plan) === 'address' ? plan.end?.location ?? null : endModeOf(plan) === 'return' ? home : null,
       open: endModeOf(plan) === 'open',
       vehicle,
       departAt: started,
@@ -36,5 +41,5 @@ export async function optimizePlan(plan: Plan, signal?: AbortSignal): Promise<Op
     throw new Error(data.error ?? `שגיאת שרת ${res.status}`);
   }
   logInfo('optimize_ok', { picked: data.picked, ms: Date.now() - started, totalDurationSec: data.totalDurationSec, totalDistanceM: data.totalDistanceM, order: data.order, deadlines: data.deadlines });
-  return { ...(data as unknown as Omit<Optimized, 'at'>), at: Date.now() };
+  return { ...(data as unknown as Omit<Optimized, 'at'>), at: Date.now(), ...(from ? { from } : {}) };
 }
