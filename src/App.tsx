@@ -1,14 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { addStops, canOptimize, editInRoute, setDue, orderedStops, removeFromRoute, emptyPlan, endModeOf, findDuplicate, removeStop, startCity, stopsFromText, updateStop } from './domain/plan';
+import { useState } from 'react';
+import { canOptimize, editInRoute, setDue, orderedStops, removeFromRoute, emptyPlan, endModeOf, removeStop, startCity, updateStop } from './domain/plan';
 import { archiveOf } from './domain/archive';
 import { dayKey, routeCsv, withEntry, withoutEntry } from './domain/history';
 import { parseTranscript } from './domain/parser.js';
-import type { Place, Plan, Stop } from './domain/types';
+import type { Stop } from './domain/types';
 import { MAX_STOPS } from './domain/types';
-import { geocode, reverseGeocode } from './services/geocode';
-import { buildReport, logError, logInfo, shareFile, shareReport } from './services/log';
+import { geocode } from './services/geocode';
+import { buildReport, logInfo, shareFile, shareReport } from './services/log';
 import { hasMapsKey } from './services/maps';
-import { optimizePlan } from './services/optimize';
 import { isFresh, loadPlan, recall, remember, savePlan, saveRoute, updateDay } from './store/db';
 import { AddStops } from './ui/AddStops';
 import { Archive } from './ui/Archive';
@@ -18,143 +17,15 @@ import { RouteView } from './ui/RouteView';
 import { Settings } from './ui/Settings';
 import { StartPoint } from './ui/StartPoint';
 import { StopList } from './ui/StopList';
+import { usePlanEditor, type PlanStorage } from './ui/usePlanEditor';
+
+const soloStorage: PlanStorage = { load: loadPlan, save: savePlan, empty: emptyPlan };
 
 export default function App() {
-  const [plan, setPlanState] = useState<Plan | null>(null);
-  const [error, setErrorState] = useState('');
-  const setError = useCallback((msg: string) => { if (msg) logError('shown_error', msg); setErrorState(msg); }, []);
-  const [notice, setNotice] = useState('');
-  const [optimizing, setOptimizing] = useState(false);
-  const [sortError, setSortError] = useState('');
-  const planRef = useRef<Plan | null>(null);
+  const { plan, setPlan, planRef, error, notice, setNotice, optimizing, sortError, verifyPlace, useHere, onAdd, onRetry, onAccept, optimize } = usePlanEditor(soloStorage);
   const [view, setView] = useState<'route' | 'calendar' | 'archive'>('route');
 
-  const setPlan = useCallback((fn: (p: Plan) => Plan) => {
-    setPlanState((prev) => {
-      const next = fn(prev ?? emptyPlan());
-      planRef.current = next;
-      savePlan(next);
-      return next;
-    });
-  }, []);
-
-  useEffect(() => { loadPlan().then((p) => { const v = p ?? emptyPlan(); planRef.current = v; setPlanState(v); }); }, []);
-
-  // Verify one stop: addresses this phone already knows first (free), then Google.
-  const verifyStop = useCallback(async (stop: Stop) => {
-    const mem = await recall(stop.input);
-    if (mem && isFresh(mem)) { setPlan((p) => updateStop(p, stop.id, { verify: 'ok', address: mem.address, location: mem.location, fixReason: undefined })); return; }
-    try {
-      // An expired entry still knows which address the courier meant, so Google is asked about that one.
-      const r = await geocode(mem?.address ?? stop.input, stop.city);
-      setPlan((p) => updateStop(p, stop.id, r.ok
-        ? { verify: 'ok', address: r.address, location: r.location, fixReason: undefined }
-        : { verify: 'needs_fix', fixReason: r.reason, address: r.address, location: r.location }));
-      // Every confirmed address is kept, so a street the courier delivers to again costs no Google call.
-      if (r.ok) {
-        remember(stop.input, { address: r.address, location: r.location });
-        if (stop.spoken !== stop.input) remember(stop.spoken, { address: r.address, location: r.location });
-      }
-    } catch (e) {
-      setPlan((p) => updateStop(p, stop.id, { verify: 'needs_fix', fixReason: (e as Error).message }));
-      setError((e as Error).message);
-    }
-  }, [setPlan, setError]);
-
-  // Two stops Google placed at the same spot are one delivery: keep the first, drop the rest.
-  useEffect(() => {
-    if (!plan) return;
-    const dups = plan.stops.filter((s) => s.verify === 'ok' && findDuplicate({ ...plan, stops: plan.stops.slice(0, plan.stops.indexOf(s)) }, s));
-    if (!dups.length) return;
-    const ids = new Set(dups.map((d) => d.id));
-    setPlan((p) => ({ ...p, stops: p.stops.filter((s) => !ids.has(s.id)), optimized: undefined }));
-    setNotice(`${dups.length === 1 ? 'כתובת כפולה הוסרה' : `${dups.length} כתובות כפולות הוסרו`}: ${dups.map((d) => d.address ?? d.input).join(', ')}`);
-    logInfo('duplicates_removed', dups.map((d) => d.address ?? d.input));
-  }, [plan, setPlan]);
-
-  // Re-check anything left pending (for example after a reload mid-verification).
-  const started = useRef(false);
-  useEffect(() => {
-    if (!plan || started.current) return;
-    started.current = true;
-    plan.stops.filter((s) => s.verify === 'pending').forEach(verifyStop);
-  }, [plan, verifyStop]);
-
   if (!plan) return <main className="app"><p className="muted">טוען...</p></main>;
-
-  const verifyPlace = async (which: 'start' | 'end', input: string) => {
-    setError('');
-    try {
-      // The start address repeats every day, so it is looked up in the phone's memory first.
-      const mem = await recall(input);
-      const city = parseTranscript(input)[0]?.city ?? null;
-      const r = mem && isFresh(mem) ? { ok: true, ...mem } : await geocode(input, city);
-      if (!r.location) { setError(`לא מצאתי את "${input}". נסה לכתוב רחוב, מספר ועיר`); return; }
-      if (r.ok && r.address && !(mem && isFresh(mem))) remember(input, { address: r.address, location: r.location });
-      const place: Place = { input, address: r.address, location: r.location };
-      logInfo('place_set', { which, input, address: r.address });
-      setPlan((p) => (which === 'start' ? { ...p, start: place, optimized: undefined } : { ...p, end: place, optimized: undefined }));
-    } catch (e) { setError((e as Error).message); }
-  };
-
-  const useHere = () => new Promise<void>((resolve) => {
-    setError('');
-    if (!navigator.geolocation) { setError('הדפדפן לא תומך באיתור מיקום'); resolve(); return; }
-    navigator.geolocation.getCurrentPosition(async (pos) => {
-      const location = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-      const address = await reverseGeocode(location).catch(() => undefined);
-      setPlan((p) => ({ ...p, start: { input: address ?? 'המיקום שלי', address: address ?? 'המיקום שלי', location }, optimized: undefined }));
-      resolve();
-    }, (err) => { setError(err.code === 1 ? 'אין הרשאה למיקום. אשר גישה בדפדפן' : 'לא הצלחתי לאתר מיקום'); resolve(); }, { enableHighAccuracy: true, timeout: 15000 });
-  });
-
-  const onAdd = (text: string) => {
-    setError(''); setNotice('');
-    const fresh = stopsFromText(text, startCity(plan));
-    logInfo('add_stops', { text, startCity: startCity(plan), parsed: fresh.map((f) => f.input) });
-    if (!fresh.length) { setError('לא זיהיתי כתובות בטקסט'); return; }
-    const { plan: next, dropped, duplicates, droppedInputs, duplicateInputs } = addStops(plan, fresh);
-    setPlan(() => next);
-    const notes = [];
-    if (duplicates) notes.push(`${duplicates === 1 ? 'כתובת אחת לא נוספה כי היא כבר ברשימה' : `${duplicates} כתובות לא נוספו כי הן כבר ברשימה`}: ${duplicateInputs.join(' · ')}`);
-    if (dropped) notes.push(`${dropped === 1 ? 'כתובת אחת לא נוספה' : `${dropped} כתובות לא נוספו`} כי אפשר עד ${MAX_STOPS} עצירות בגרסה הזו: ${droppedInputs.join(' · ')}`);
-    if (notes.length) setNotice(notes.join('. '));
-    if (duplicates) logInfo('duplicates_skipped', duplicateInputs);
-    next.stops.filter((s) => fresh.some((f) => f.id === s.id) && s.verify === 'pending').forEach(verifyStop);
-  };
-
-  const onRetry = (id: string, input: string) => {
-    const s = plan.stops.find((x) => x.id === id);
-    if (!s) return;
-    const city = parseTranscript(input, { defaultCity: startCity(plan) })[0]?.city ?? s.city;
-    logInfo('fix_retry', { from: s.input, to: input });
-    const updated: Stop = { ...s, input: input.trim(), city, verify: 'pending', fixReason: undefined, address: undefined, location: undefined };
-    setPlan((p) => updateStop(p, id, updated));
-    verifyStop(updated);
-  };
-
-  const onAccept = (id: string) => {
-    const s = plan.stops.find((x) => x.id === id);
-    if (!s?.address || !s.location) return;
-    logInfo('fix_accept', { spoken: s.spoken, address: s.address });
-    remember(s.spoken, { address: s.address, location: s.location });
-    if (s.input !== s.spoken) remember(s.input, { address: s.address, location: s.location });
-    setPlan((p) => updateStop(p, id, { verify: 'ok', fixReason: undefined }));
-  };
-
-  const optimize = async () => {
-    setError(''); setSortError(''); setOptimizing(true);
-    try {
-      const current = planRef.current ?? plan;
-      const optimized = await optimizePlan(current);
-      setPlan((p) => ({ ...p, optimized }));
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    } catch (e) {
-      // Shown next to the button too: the banner at the top is off-screen on a phone.
-      setError((e as Error).message); setSortError((e as Error).message);
-    }
-    finally { setOptimizing(false); }
-  };
 
   const sendLogs = async () => {
     const p = planRef.current ?? plan;

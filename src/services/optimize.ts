@@ -3,13 +3,17 @@ import type { Optimized, Plan } from '../domain/types';
 import { logError, logInfo } from './log';
 import { getVehicle } from './vehicle';
 
-export async function optimizePlan(plan: Plan, signal?: AbortSignal): Promise<Optimized> {
+/** The company planner sorts for another courier, maybe for tomorrow: it sets the vehicle and the departure. */
+export interface OptimizeOptions { vehicle?: 'scooter' | 'car'; departAt?: number }
+
+export async function optimizePlan(plan: Plan, signal?: AbortSignal, opts: OptimizeOptions = {}): Promise<Optimized> {
   const stops = plan.stops.filter((s) => s.delivery === 'todo' && s.location);
   const origin = routeOrigin(plan);
   if (!plan.start.location || !origin) throw new Error('חסרה נקודת יציאה מאומתת');
-  const started = Date.now();
+  const t0 = Date.now();
+  const started = opts.departAt ?? t0;
   const timed = stops.filter((s) => s.dueAt).length;
-  const vehicle = getVehicle();
+  const vehicle = opts.vehicle ?? getVehicle();
   logInfo('optimize_request', { vehicle, stops: stops.length, pinned: stops.filter((s) => s.order !== 'auto').length, timed, endMode: endModeOf(plan) });
   const res = await fetch('/api/optimize', {
     method: 'POST', signal,
@@ -32,9 +36,9 @@ export async function optimizePlan(plan: Plan, signal?: AbortSignal): Promise<Op
     throw new Error('השרת לא החזיר מסלול. ייתכן שפונקציית הסידור לא עלתה ל-Vercel');
   }
   if (!res.ok) {
-    logError('optimize_failed', { status: res.status, error: data.error, ms: Date.now() - started });
+    logError('optimize_failed', { status: res.status, error: data.error, ms: Date.now() - t0 });
     throw new Error(data.error ?? `שגיאת שרת ${res.status}`);
   }
-  logInfo('optimize_ok', { picked: data.picked, ms: Date.now() - started, totalDurationSec: data.totalDurationSec, totalDistanceM: data.totalDistanceM, order: data.order, deadlines: data.deadlines });
+  logInfo('optimize_ok', { picked: data.picked, ms: Date.now() - t0, totalDurationSec: data.totalDurationSec, totalDistanceM: data.totalDistanceM, order: data.order, deadlines: data.deadlines });
   return { ...(data as unknown as Omit<Optimized, 'at'>), at: Date.now() };
 }

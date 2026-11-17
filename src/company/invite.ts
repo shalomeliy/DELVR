@@ -42,6 +42,10 @@ export function errorText(e: unknown) {
     [/already in a company/, 'החשבון הזה כבר שייך לחברה'],
     [/name required/, 'חסר שם'],
     [/admins only/, 'רק מנהל יכול לעשות את זה'],
+    [/route already started/, 'השליח כבר התחיל את המסלול הזה, אי אפשר להחליף אותו. הוספת כתובות באמצע תגיע בלוח הבקרה'],
+    [/day already paid/, 'היום הזה כבר אושר לתשלום'],
+    [/not an active courier/, 'השליח הזה לא פעיל'],
+    [/too many stops/, 'אפשר עד 25 עצירות במסלול'],
     [/Failed to fetch|NetworkError|network/i, 'אין חיבור לשרת. בדוק את האינטרנט ונסה שוב'],
   ];
   return map.find(([re]) => re.test(m))?.[1] ?? m;

@@ -1,4 +1,5 @@
 // Every call company mode makes to Supabase. Screens import from here, never from supabase-js directly.
+import type { SendPayload } from './send';
 import { supabase } from './supabase';
 
 export interface Company { id: string; name: string }
@@ -60,4 +61,23 @@ export async function cancelInvite(token: string) {
 
 export async function setCourierActive(companyId: string, userId: string, active: boolean) {
   check(await supabase().from('members').update({ active }).eq('company_id', companyId).eq('user_id', userId));
+}
+
+export interface ServerRoute { id: string; status: string; version: number; sentAt: string | null; stops: number; marked: number }
+
+/** The route already on the server for this courier and day, if any. */
+export async function getRoute(companyId: string, courierId: string, day: string): Promise<ServerRoute | null> {
+  const rows = check(await supabase().from('routes').select('id, status, version, sent_at, stops(delivery)')
+    .eq('company_id', companyId).eq('courier_id', courierId).eq('day', day).limit(1));
+  const r = (rows ?? [])[0] as { id: string; status: string; version: number; sent_at: string | null; stops: { delivery: string }[] } | undefined;
+  if (!r) return null;
+  return { id: r.id, status: r.status, version: r.version, sentAt: r.sent_at, stops: r.stops.length, marked: r.stops.filter((s) => s.delivery !== 'todo').length };
+}
+
+export async function sendRoute(companyId: string, courierId: string, day: string, vehicle: 'scooter' | 'car', p: SendPayload) {
+  const r = check(await supabase().rpc('send_route', {
+    p_company: companyId, p_courier: courierId, p_day: day, p_start: p.start, p_end_mode: p.endMode, p_end: p.end,
+    p_vehicle: vehicle, p_optimized: p.optimized, p_stops: p.stops,
+  })) as { version: number; sent_at: string };
+  return r;
 }

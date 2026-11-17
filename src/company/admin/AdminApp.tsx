@@ -6,12 +6,14 @@ import { hasSupabase } from '../supabase';
 import { Couriers } from './Couriers';
 import { CreateCompany } from './CreateCompany';
 import { Login } from './Login';
+import { Planner } from './Planner';
 import '../theme.css';
 
 type State = { k: 'loading' } | { k: 'out' } | { k: 'no-company' } | { k: 'in'; company: Company } | { k: 'error'; msg: string };
 
 export default function AdminApp() {
   const [s, setS] = useState<State>({ k: 'loading' });
+  const [tab, setTab] = useState<'plan' | 'couriers'>('plan');
 
   const refresh = useCallback(async () => {
     try {
@@ -47,10 +49,14 @@ export default function AdminApp() {
                   <div><b>PassIT</b><span className="co-muted co-small">מרכז שליטה · {s.company.name}</span></div>
                 </div>
                 <div className="co-actions">
+                  <nav className="co-nav" aria-label="מסכים">
+                    <button type="button" aria-current={tab === 'plan' ? 'page' : undefined} onClick={() => setTab('plan')}>מסלול</button>
+                    <button type="button" aria-current={tab === 'couriers' ? 'page' : undefined} onClick={() => setTab('couriers')}>שליחים</button>
+                  </nav>
                   <button type="button" className="co-quiet" onClick={() => auth.signOut()}>יציאה</button>
                 </div>
               </header>
-              <Couriers company={s.company} />
+              {tab === 'plan' ? <Planner company={s.company} onInvite={() => setTab('couriers')} /> : <Couriers company={s.company} />}
             </>
           )}
       </div>

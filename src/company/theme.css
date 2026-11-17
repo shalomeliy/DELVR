@@ -5,6 +5,9 @@
   --bg: #0A0E17; --panel: #121826; --panel2: #0F1522; --line: #1F2838; --line2: #2B3850;
   --text: #EEF2F8; --muted: #8B97AD; --live: #C8F560; --live-hover: #E2FF9E;
   --ok: #34D399; --paste: #FBBF24; --fail: #FB7185; --todo: #243047;
+  /* the solo app's own variables, so its components reused here (address entry, fixes) come out dark */
+  --card: var(--panel); --accent: var(--live); --accent-text: var(--bg); --bad: var(--fail); --warn: var(--paste);
+  --ok-bg: rgba(52, 211, 153, .12); --bad-bg: rgba(251, 113, 133, .12); --warn-bg: rgba(251, 191, 36, .12);
   min-height: 100dvh; padding: 20px 16px 120px; box-sizing: border-box; color-scheme: dark;
   background: var(--bg); color: var(--text); font-family: Heebo, system-ui, sans-serif; font-size: 16px; line-height: 1.5;
 }
@@ -26,23 +29,23 @@
 .co-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
 
 /* controls */
-.co button, .co .co-btn { font: 500 15px Heebo, sans-serif; min-height: 44px; padding: 0 16px; border-radius: 12px;
+:where(.co) button, .co .co-btn { font: 500 15px Heebo, sans-serif; min-height: 44px; padding: 0 16px; border-radius: 12px;
   background: var(--panel); color: var(--text); border: 1px solid var(--line); cursor: pointer;
   display: inline-flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none; }
-.co button:hover, .co .co-btn:hover { border-color: var(--line2); }
+:where(.co) button:hover, .co .co-btn:hover { border-color: var(--line2); }
 .co .co-primary { background: var(--live); color: var(--bg); border: 0; font: 700 15px Rubik, sans-serif; }
 .co .co-primary:hover { background: var(--live-hover); }
 .co .co-ghost { background: transparent; color: var(--live); border-color: var(--line2); }
 .co .co-quiet { background: transparent; border-color: transparent; color: var(--muted); padding: 0 10px; }
 .co .co-quiet:hover { color: var(--text); border-color: transparent; }
 .co .co-danger { color: var(--fail); }
-.co button:disabled { opacity: .5; cursor: not-allowed; }
+:where(.co) button:disabled { opacity: .5; cursor: not-allowed; }
 .co button:focus-visible, .co input:focus-visible, .co a:focus-visible { outline: 2px solid var(--live); outline-offset: 2px; }
 .co .co-wide { width: 100%; }
-.co label { display: block; font-size: 14px; color: var(--muted); margin-bottom: 6px; }
-.co input { font: 400 16px Heebo, sans-serif; color: var(--text); background: var(--panel2); border: 1px solid var(--line);
+:where(.co) label { display: block; font-size: 14px; color: var(--muted); margin-bottom: 6px; }
+:where(.co) input { font: 400 16px Heebo, sans-serif; color: var(--text); background: var(--panel2); border: 1px solid var(--line);
   border-radius: 12px; padding: 12px 14px; width: 100%; min-height: 48px; }
-.co input::placeholder { color: #5B6780; }
+:where(.co) input::placeholder { color: #5B6780; }
 .co .co-field { margin-bottom: 14px; }
 
 /* surfaces */
@@ -92,3 +95,38 @@
 .co-dock > * { flex: 1; min-height: 52px; }
 @media (min-width: 900px) { .co-dock { display: none; } }
 @media (max-width: 899px) { .co-desk { display: none !important; } }
+
+/* admin navigation */
+.co-nav { display: flex; gap: 4px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 4px; }
+.co .co-nav button { border: 0; background: transparent; color: var(--muted); min-height: 40px; }
+.co .co-nav button[aria-current='page'] { background: var(--live); color: var(--bg); font-weight: 700; }
+
+/* planner */
+.co-label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+.co-pickers { display: flex; flex-direction: column; gap: 14px; }
+.co-pick-row { display: flex; gap: 14px; flex-wrap: wrap; }
+.co-pick-row > div { flex: 1 1 160px; }
+.co .co-tabs-sm { margin: 0; }
+.co-chips { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
+.co .co-chip { border-radius: 999px; padding: 0 14px 0 6px; flex: none; min-height: 44px; }
+.co .co-chip[aria-checked='true'] { border-color: var(--live); box-shadow: 0 0 0 1px var(--live) inset; }
+.co-chip-av { width: 32px; height: 32px; border-radius: 50%; background: var(--todo); display: inline-flex; align-items: center; justify-content: center; font: 700 13px Rubik, sans-serif; }
+.co-chip[aria-checked='true'] .co-chip-av { background: var(--live); color: var(--bg); }
+.co-status { min-height: 24px; }
+.co-side { display: flex; flex-direction: column; gap: 14px; }
+@media (min-width: 900px) { .co-side { position: sticky; top: 16px; } .co-grid.co-plan { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); } }
+.co-mapcard { padding: 6px; overflow: hidden; }
+.co .co-mapcard .map { margin: 0; height: 300px; border-radius: 18px; background: var(--panel2); }
+@media (min-width: 900px) { .co .co-mapcard .map { height: 420px; } }
+.co-sendbox { display: flex; flex-direction: column; gap: 8px; }
+.co-sendbox > button { min-height: 56px; font-size: 17px; }
+.co-dock-col { flex-direction: column; gap: 6px; }
+.co-danger { color: var(--fail); }
+.co-seq { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.co-seq li { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 14px; background: var(--panel2); border: 1px solid var(--line); }
+.co-seq-n { width: 30px; height: 30px; border-radius: 50%; background: var(--todo); color: var(--text); display: flex; align-items: center; justify-content: center; font: 700 14px Rubik, sans-serif; flex: none; }
+.co-seq li:first-child .co-seq-n { background: var(--live); color: var(--bg); }
+.co-solo .card { border-radius: 24px; border-color: var(--line); padding: 18px; }
+.co-solo h2 { font-size: 18px; }
+.co-solo .primary { color: var(--bg); font-family: Rubik, sans-serif; font-weight: 700; }
+.co-dock-col > div { min-height: 0; flex: none; text-align: center; }
