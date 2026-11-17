@@ -104,3 +104,6 @@ revoke execute on function create_invite(uuid, text, uuid), accept_invite(text),
   send_route(uuid, uuid, date, jsonb, text, jsonb, text, jsonb, jsonb) from public, anon;
 grant execute on function create_invite(uuid, text, uuid), accept_invite(text),
   send_route(uuid, uuid, date, jsonb, text, jsonb, text, jsonb, jsonb) to authenticated;
+
+-- Tell the Supabase API to see the new functions right away.
+notify pgrst, 'reload schema';

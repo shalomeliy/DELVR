@@ -20,3 +20,6 @@ end $$;
 
 revoke execute on function create_company(text, text) from public, anon;
 grant execute on function create_company(text, text) to authenticated;
+
+-- Tell the Supabase API to see the new functions right away.
+notify pgrst, 'reload schema';
