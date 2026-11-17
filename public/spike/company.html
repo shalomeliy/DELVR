@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PassIT ספייק מצב חברה</title>
+<!-- Throwaway spike page (spikes/company-mode). Tests live sync between an admin and a courier on Supabase. Not part of the app. -->
+<style>
+  :root { --bg: #fff; --fg: #111; --muted: #666; --line: #ddd; --ok: #15803d; --paste: #a16207; --bad: #b91c1c; --blue: #1d4ed8; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #111; --fg: #eee; --muted: #999; --line: #333; } }
+  body { margin: 0; padding: 16px; font: 16px/1.4 system-ui, sans-serif; background: var(--bg); color: var(--fg); max-width: 760px; }
+  h1 { font-size: 20px; margin: 0 0 12px; }
+  input, button, select { font: inherit; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
+  button { cursor: pointer; } button.p { background: var(--blue); color: #fff; border-color: var(--blue); }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 6px 0; }
+  .row input { flex: 1; min-width: 140px; }
+  .stop { border: 1px solid var(--line); border-radius: 10px; padding: 10px; margin: 8px 0; }
+  .stop .t { font-weight: 600; }
+  .muted { color: var(--muted); font-size: 14px; }
+  .delivered { border-inline-start: 6px solid var(--ok); } .pasted { border-inline-start: 6px solid var(--paste); } .failed { border-inline-start: 6px solid var(--bad); }
+  .bar { position: sticky; top: 0; background: var(--bg); padding: 6px 0; border-bottom: 1px solid var(--line); margin-bottom: 8px; }
+  .toast { background: var(--blue); color: #fff; padding: 8px 12px; border-radius: 8px; margin: 8px 0; }
+  #log { font: 12px/1.4 ui-monospace, monospace; white-space: pre-wrap; color: var(--muted); max-height: 200px; overflow: auto; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<h1>ספייק: מנהל ושליח בזמן אמת</h1>
+
+<section id="setup">
+  <div class="row"><input id="url" placeholder="Supabase Project URL" dir="ltr"></div>
+  <div class="row"><input id="key" placeholder="anon / publishable key" dir="ltr"></div>
+  <div class="row"><input id="email" placeholder="אימייל" dir="ltr" type="email"><input id="pass" placeholder="סיסמה" type="password"></div>
+  <div class="row"><button class="p" id="login">התחברות</button><span class="muted" id="who"></span></div>
+</section>
+
+<section id="app" class="hidden">
+  <div class="bar row"><b id="role"></b><span class="muted" id="net"></span><span class="muted" id="queue"></span><button id="logout">יציאה</button></div>
+  <div id="toast"></div>
+  <div id="adminTools" class="hidden">
+    <div class="row"><select id="courier"></select><input id="day" type="date"></div>
+    <div class="row"><input id="newStop" placeholder="כתובת חדשה באמצע המסלול"><button id="add">הוסף לשליח</button></div>
+    <div class="row"><button id="report">דוח יומי</button><button id="payout">פתח תשלום</button><button id="approve">אשר תשלום</button></div>
+    <div id="pay"></div>
+  </div>
+  <div id="courierTools" class="hidden">
+    <div class="row"><button id="gps">בדיקת GPS: התחל</button><span class="muted" id="gpsInfo"></span></div>
+  </div>
+  <div id="stops"></div>
+  <details><summary class="muted">יומן</summary><div id="log"></div></details>
+</section>
+
+<!-- @supabase/supabase-js 2.118.0, UMD build copied from the npm package, so the page needs no CDN. -->
+<script src="./supabase.js"></script>
+<script type="module">
+const { createClient } = window.supabase;
+import { createOutbox, localStore, backoffMs } from './outbox.mjs';
+
+const $ = (id) => document.getElementById(id);
+const LS = { get: (k) => { try { return localStorage.getItem(k) ?? ''; } catch { return ''; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch {} } };
+const log = (...a) => { $('log').textContent = `${new Date().toLocaleTimeString('he-IL')} ${a.join(' ')}\n` + $('log').textContent; };
+const LABEL = { todo: 'ממתין', delivered: 'נמסר', pasted: 'הדבקה', failed: 'נכשל' };
+const today = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Jerusalem' });
+for (const k of ['url', 'key', 'email']) $(k).value = LS.get('spike_' + k);
+
+let sb, me, member, stops = [], route = null, channel = null, outbox, attempt = 0;
+
+$('login').onclick = async () => {
+  for (const k of ['url', 'key', 'email']) LS.set('spike_' + k, $(k).value.trim());
+  sb = createClient($('url').value.trim(), $('key').value.trim());
+  const { data, error } = await sb.auth.signInWithPassword({ email: $('email').value.trim(), password: $('pass').value });
+  if (error) { $('who').textContent = 'שגיאה: ' + error.message; return; }
+  me = data.user;
+  const m = await sb.from('members').select('company_id, role, name').eq('user_id', me.id).eq('active', true).maybeSingle();
+  if (!m.data) { $('who').textContent = 'המשתמש לא משויך לחברה. הרץ את seed.sql'; return; }
+  member = m.data;
+  $('setup').classList.add('hidden'); $('app').classList.remove('hidden');
+  $('role').textContent = `${member.name} (${member.role === 'admin' ? 'מנהל' : 'שליח'})`;
+  member.role === 'admin' ? startAdmin() : startCourier();
+};
+$('logout').onclick = async () => { await sb?.auth.signOut(); location.reload(); };
+
+// ---------------- shared ----------------
+function render() {
+  const canMark = member.role === 'courier';
+  $('stops').innerHTML = '';
+  for (const s of [...stops].sort((a, b) => a.seq - b.seq)) {
+    const el = document.createElement('div');
+    el.className = 'stop ' + s.delivery;
+    const lag = s.handled_at && s._seenAt ? ` · הגיע למסך אחרי ${((s._seenAt - Date.parse(s.handled_at)) / 1000).toFixed(1)} שנ'` : '';
+    el.innerHTML = `<div class="t">${s.seq}. ${esc(s.address ?? s.input)}</div>
+      <div class="muted">${LABEL[s.delivery]}${s.fail_reason ? ': ' + esc(s.fail_reason) : ''}${s.handled_at ? ' · ' + new Date(s.handled_at).toLocaleTimeString('he-IL') : ''}${member.role === 'admin' ? lag : ''}</div>`;
+    if (canMark) {
+      const row = document.createElement('div'); row.className = 'row';
+      for (const [o, t] of [['delivered', 'נמסר'], ['pasted', 'הדבקה'], ['failed', 'נכשל'], ['todo', 'ביטול']]) {
+        const b = document.createElement('button'); b.textContent = t;
+        b.onclick = () => mark(s, o);
+        row.append(b);
+      }
+      el.append(row);
+    }
+    $('stops').append(el);
+  }
+}
+const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const toast = (t) => { $('toast').innerHTML = `<div class="toast">${esc(t)}</div>`; setTimeout(() => ($('toast').innerHTML = ''), 5000); };
+
+function listen(filter, onStop, onRoute) {
+  channel?.unsubscribe();
+  channel = sb.channel('spike-' + Math.random())
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'stops', ...(filter ? { filter } : {}) }, (p) => onStop(p))
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'routes' }, (p) => onRoute?.(p))
+    .subscribe((st) => log('realtime', st));
+}
+function upsert(row) { row._seenAt = Date.now(); const i = stops.findIndex((s) => s.id === row.id); i < 0 ? stops.push(row) : (stops[i] = row); }
+
+// ---------------- admin ----------------
+async function startAdmin() {
+  $('adminTools').classList.remove('hidden');
+  $('day').value = today();
+  const cs = await sb.from('members').select('user_id, name').eq('company_id', member.company_id).eq('role', 'courier');
+  $('courier').innerHTML = (cs.data ?? []).map((c) => `<option value="${c.user_id}">${esc(c.name)}</option>`).join('');
+  $('courier').onchange = $('day').onchange = loadAdmin;
+  await loadAdmin();
+}
+async function loadAdmin() {
+  const r = await sb.from('routes').select('*').eq('courier_id', $('courier').value).eq('day', $('day').value).maybeSingle();
+  route = r.data; stops = [];
+  if (!route) { $('stops').innerHTML = '<p class="muted">אין מסלול לשליח ביום הזה</p>'; return; }
+  const s = await sb.from('stops').select('*').eq('route_id', route.id);
+  stops = s.data ?? []; render();
+  listen(`route_id=eq.${route.id}`, (p) => { upsert(p.new); render(); log('סימון', p.new.input, p.new.delivery); });
+}
+$('add').onclick = async () => {
+  const t = $('newStop').value.trim(); if (!t || !route) return;
+  const last = stops.at(-1) ?? { lat: 31.87, lng: 34.74 };
+  const { data, error } = await sb.rpc('add_stop', { p_route: route.id, p_input: t, p_address: t, p_lat: last.lat + 0.002, p_lng: last.lng });
+  if (error) return toast(error.message);
+  // Spike stand-in for /api/optimize: the new stop goes first among the open ones.
+  const open = [data.id, ...stops.filter((s) => s.delivery === 'todo' && s.id !== data.id).sort((a, b) => a.seq - b.seq).map((s) => s.id)];
+  const o = await sb.rpc('set_order', { p_route: route.id, p_ids: open, p_optimized: { by: 'spike' } });
+  if (o.error) return toast(o.error.message);
+  $('newStop').value = ''; toast('נוספה ונשלחה לשליח'); loadAdmin();
+};
+$('report').onclick = async () => {
+  const { data, error } = await sb.rpc('daily_report', { p_company: member.company_id, p_courier: $('courier').value, p_day: $('day').value });
+  if (error) return toast(error.message);
+  const n = (o) => data.filter((r) => r.outcome === o).length;
+  const total = data.reduce((a, r) => a + Number(r.price), 0);
+  $('pay').innerHTML = `<p>נמסרו ${n('delivered')} · הודבקו ${n('pasted')} · נכשלו ${n('failed')} · ממתינים ${n('todo')} · <b>לתשלום ${total} ₪</b></p>`;
+};
+$('payout').onclick = async () => {
+  const { data: id, error } = await sb.rpc('open_payout', { p_company: member.company_id, p_courier: $('courier').value, p_day: $('day').value });
+  if (error) return toast(error.message);
+  showPayout(id);
+};
+async function showPayout(id) {
+  const p = await sb.from('payouts').select('*').eq('id', id).single();
+  const { data: lines } = await sb.from('payout_lines').select('*').eq('payout_id', id).order('id');
+  const total = lines.reduce((a, l) => a + Number(l.price), 0);
+  $('pay').innerHTML = `<p><b>תשלום ${p.data.status === 'approved' ? '(מאושר)' : '(פתוח)'}: ${total} ₪</b></p>` + lines.map((l) =>
+    `<div class="row muted">${esc(l.address)} · דווח: ${LABEL[l.reported] ?? '-'} · ${l.price} ₪${l.admin_note ? ' · ' + esc(l.admin_note) : ''}
+     ${p.data.status === 'open' && !l.manual ? `<button data-l="${l.id}">שנה</button>` : ''}</div>`).join('');
+  $('pay').dataset.id = id;
+  $('pay').querySelectorAll('button[data-l]').forEach((b) => (b.onclick = async () => {
+    const outcome = prompt('מה קרה בפועל? delivered / pasted / failed'); if (!outcome) return;
+    const price = prompt('סכום בש"ח'); const note = prompt('למה? (חובה)');
+    const r = await sb.rpc('adjust_line', { p_line: Number(b.dataset.l), p_outcome: outcome, p_price: Number(price), p_note: note });
+    r.error ? toast(r.error.message) : showPayout(id);
+  }));
+}
+$('approve').onclick = async () => {
+  const id = $('pay').dataset.id; if (!id) return toast('פתח תשלום קודם');
+  const r = await sb.rpc('approve_payout', { p_payout: id });
+  r.error ? toast(r.error.message) : (toast(`אושר: ${r.data} ₪`), showPayout(id));
+};
+
+// ---------------- courier ----------------
+async function startCourier() {
+  $('courierTools').classList.remove('hidden');
+  outbox = createOutbox({
+    store: localStore('spike_outbox'),
+    send: async (m) => {
+      const { error } = await sb.rpc('mark_stop', { p_stop: m.stopId, p_outcome: m.outcome, p_reason: m.reason, p_lat: m.lat, p_lng: m.lng, p_client_event_id: m.id, p_client_at: m.at });
+      if (error) throw new Error(error.message);
+    },
+    onRejected: (m, e) => toast('הסימון לא נשמר: ' + e.message),
+  });
+  window.addEventListener('online', () => { attempt = 0; flush(); });
+  setNet();
+  window.addEventListener('online', setNet); window.addEventListener('offline', setNet);
+  await loadCourier();
+  flush();
+}
+function setNet() { $('net').textContent = navigator.onLine ? 'מחובר' : 'אין קליטה'; }
+async function showQueue() { const n = await outbox.pending(); $('queue').textContent = n ? `ממתינים לשליחה: ${n}` : 'הכול נשלח'; }
+async function flush() {
+  const r = await outbox.flush(); await showQueue();
+  if (r.left) { const ms = backoffMs(attempt++); log('אין קליטה, מנסה שוב בעוד', ms / 1000, 'שנ\''); setTimeout(flush, ms); } else attempt = 0;
+}
+async function loadCourier() {
+  const r = await sb.from('routes').select('*').eq('day', today()).order('sent_at', { ascending: false }).limit(1).maybeSingle();
+  route = r.data;
+  if (!route) { $('stops').innerHTML = '<p class="muted">אין מסלול להיום</p>'; return; }
+  const s = await sb.from('stops').select('*').eq('route_id', route.id);
+  stops = s.data ?? []; render(); showQueue();
+  listen(`route_id=eq.${route.id}`, (p) => {
+    if (p.eventType === 'INSERT') toast('המסלול עודכן: נוספה עצירה');
+    upsert(p.new); render();
+  }, (p) => { if (p.new.id === route.id && p.new.version !== route.version) { route = p.new; toast('המסלול עודכן'); } });
+}
+async function mark(s, outcome) {
+  let reason = null;
+  if (outcome === 'failed') { reason = prompt('סיבת הכישלון'); if (!reason?.trim()) return; }
+  const pos = await here();
+  await outbox.enqueue({ stopId: s.id, outcome, reason, lat: pos?.lat ?? null, lng: pos?.lng ?? null });
+  // Shown right away, before the server answers: the courier never waits for signal.
+  Object.assign(s, { delivery: outcome, fail_reason: reason, handled_at: outcome === 'todo' ? null : new Date().toISOString() });
+  render(); flush();
+}
+const here = () => new Promise((res) => navigator.geolocation
+  ? navigator.geolocation.getCurrentPosition((p) => res({ lat: p.coords.latitude, lng: p.coords.longitude }), () => res(null), { timeout: 3000, maximumAge: 60000 })
+  : res(null));
+
+// GPS check: how long does the phone keep reporting with the screen off? Records fix times on the phone only.
+let watch = null, fixes = [];
+$('gps').onclick = () => {
+  if (watch !== null) { navigator.geolocation.clearWatch(watch); watch = null; $('gps').textContent = 'בדיקת GPS: התחל'; return; }
+  fixes = [];
+  watch = navigator.geolocation.watchPosition(() => { fixes.push(Date.now()); gpsInfo(); }, (e) => log('GPS', e.message), { enableHighAccuracy: true });
+  $('gps').textContent = 'בדיקת GPS: עצור';
+};
+function gpsInfo() {
+  let gap = 0; for (let i = 1; i < fixes.length; i++) gap = Math.max(gap, fixes[i] - fixes[i - 1]);
+  $('gpsInfo').textContent = `${fixes.length} מיקומים · הפער הארוך: ${Math.round(gap / 1000)} שנ'`;
+}
+document.addEventListener('visibilitychange', () => { if (watch !== null) log('מסך', document.hidden ? 'כבה/ברקע' : 'חזר', `(${fixes.length} מיקומים)`); });
+</script>
+</body>
+</html>
