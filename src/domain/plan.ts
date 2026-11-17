@@ -107,6 +107,21 @@ export function orderedStops(plan: Plan): Stop[] {
   return [...plan.optimized.order.map((id) => byId.get(id)).filter((s): s is Stop => !!s), ...plan.stops.filter((s) => !seen.has(s.id))];
 }
 
+/** "HH:MM" today as epoch ms, in the phone's own time zone. */
+export function dueEpoch(hhmm: string, now = Date.now()): number | undefined {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm);
+  if (!m || +m[1] > 23 || +m[2] > 59) return undefined;
+  const d = new Date(now);
+  d.setHours(+m[1], +m[2], 0, 0);
+  return d.getTime();
+}
+
+/** Sets or clears the "בול בזמן" time of a stop. A timed stop is placed by its time, so its first/last pin is dropped. */
+export function setDue(plan: Plan, id: string, due: string | undefined): Plan {
+  const patch: Partial<Stop> = due ? { dueAt: due, order: 'auto' } : { dueAt: undefined };
+  return plan.optimized ? { ...updateStop(plan, id, patch, true), optimized: { ...plan.optimized, stale: true } } : updateStop(plan, id, patch);
+}
+
 export const fmtDuration = (sec: number) => {
   const m = Math.round(sec / 60);
   return m < 60 ? `${m} דק'` : `${Math.floor(m / 60)}:${String(m % 60).padStart(2, '0')} שע'`;

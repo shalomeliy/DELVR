@@ -2,14 +2,18 @@
 // Pure logic with an injected fetch, so it runs in the Vercel function, the Vite dev server and tests alike.
 
 export interface LatLngIn { lat: number; lng: number }
-export interface StopIn extends LatLngIn { id: string; order?: 'first' | 'auto' | 'last' }
+/** dueAt: "בול בזמן", epoch ms the courier must be at this stop by. Such a stop is placed by time, not by order. */
+export interface StopIn extends LatLngIn { id: string; order?: 'first' | 'auto' | 'last'; dueAt?: number }
 /** open: the route ends at the last stop instead of returning to the origin or a destination. */
 /**
  * scooter: Google has no motorcycle routing in Israel (TWO_WHEELER is not offered there), so a scooter is a
  * car that keeps off highways, and between two orders the shorter one in km wins. car: the faster one wins.
  */
 export type Vehicle = 'scooter' | 'car';
-export interface OptimizeInput { origin: LatLngIn; destination?: LatLngIn | null; open?: boolean; vehicle?: Vehicle; stops: StopIn[] }
+/** departAt: when the courier leaves the origin (epoch ms); needed only for stops with a time. */
+export interface OptimizeInput { origin: LatLngIn; destination?: LatLngIn | null; open?: boolean; vehicle?: Vehicle; departAt?: number; stops: StopIn[] }
+/** How a timed stop works out: estimated arrival, minutes waiting when early, minutes late when the time cannot be met. */
+export interface DeadlineOut { id: string; dueAt: number; etaAt: number; waitSec: number; lateSec: number }
 export interface OptimizeOutput {
   order: string[];
   legs: { durationSec: number; distanceM: number }[];
@@ -18,9 +22,16 @@ export interface OptimizeOutput {
   polyline?: string;
   /** Which order won: Google's own optimizer or the geometric sweep checked against Google. */
   picked?: 'google' | 'sweep';
+  /** One entry per timed stop, in route order. */
+  deadlines?: DeadlineOut[];
+  /** Total time spent waiting at timed stops reached early. Not part of totalDurationSec (driving only). */
+  waitSec?: number;
 }
 
 export const MAX_STOPS = 25;
+export const MAX_TIMED = 5;
+/** Minutes a courier spends at each stop, used only to estimate arrival at timed stops. */
+export const SERVICE_SEC = 180;
 const ROUTES_URL = 'https://routes.googleapis.com/directions/v2:computeRoutes';
 const FIELDS = 'routes.optimizedIntermediateWaypointIndex,routes.legs.duration,routes.legs.distanceMeters,routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline';
 
@@ -42,10 +53,14 @@ export function validate(body: unknown): OptimizeInput {
   const ids = new Set<string>();
   for (const s of b.stops) {
     if (!isPoint(s) || typeof s.id !== 'string' || !s.id || ids.has(s.id)) throw new HttpError(400, 'עצירה לא תקינה');
+    if (s.dueAt != null && !(typeof s.dueAt === 'number' && Number.isFinite(s.dueAt))) throw new HttpError(400, 'שעה לא תקינה בעצירה');
     ids.add(s.id);
   }
+  if (b.stops.filter((s) => s.dueAt != null).length > MAX_TIMED) throw new HttpError(400, `אפשר לקבוע שעה לעד ${MAX_TIMED} עצירות במסלול`);
   for (const p of [b.origin, b.destination, ...b.stops]) if (p && !inIsrael(p)) throw new HttpError(400, 'כל הכתובות צריכות להיות בישראל');
-  return { origin: b.origin, destination: b.destination ?? null, open: b.open === true && b.destination == null, vehicle: b.vehicle === 'car' ? 'car' : 'scooter', stops: b.stops.map((s) => ({ id: s.id, lat: s.lat, lng: s.lng, order: s.order ?? 'auto' })) };
+  return { origin: b.origin, destination: b.destination ?? null, open: b.open === true && b.destination == null, vehicle: b.vehicle === 'car' ? 'car' : 'scooter',
+    departAt: typeof b.departAt === 'number' && Number.isFinite(b.departAt) ? b.departAt : undefined,
+    stops: b.stops.map((s) => ({ id: s.id, lat: s.lat, lng: s.lng, order: s.order ?? 'auto', ...(s.dueAt != null ? { dueAt: s.dueAt } : {}) })) };
 }
 
 const wp = (p: LatLngIn) => ({ location: { latLng: { latitude: p.lat, longitude: p.lng } } });
@@ -120,14 +135,33 @@ export function sweepOrder(from: LatLngIn, to: LatLngIn, mids: LatLngIn[]): numb
 
 const cost = (r: GRoute, vehicle: Vehicle) => (vehicle === 'scooter' ? r.distanceMeters ?? Infinity : sec(r.duration) || Infinity);
 
+/** Google's order for the stops between two fixed points, checked against the sweep; the cheaper one wins. */
+async function bestOrder(fetchFn: typeof fetch, key: string, vehicle: Vehicle, from: LatLngIn, to: LatLngIn, mids: StopIn[]): Promise<{ idx: number[]; route: GRoute; picked: 'google' | 'sweep' }> {
+  let route = await computeRoute(fetchFn, key, vehicle, from, to, mids, true);
+  let idx = route.optimizedIntermediateWaypointIndex?.length === mids.length ? route.optimizedIntermediateWaypointIndex : mids.map((_, i) => i);
+  // Check Google's order against the sweep with one more (non-optimizing) call, and keep the cheaper one.
+  let picked: 'google' | 'sweep' = 'google';
+  const sweep = sweepOrder(from, to, mids);
+  if (mids.length > 2 && sweep.join() !== idx.join()) {
+    const alt = await computeRoute(fetchFn, key, vehicle, from, to, sweep.map((i) => mids[i]), false);
+    if (cost(alt, vehicle) < cost(route, vehicle)) { route = alt; idx = sweep; picked = 'sweep'; }
+  }
+  return { idx, route, picked };
+}
+
+const toLegs = (r: GRoute) => (r.legs ?? []).map((l) => ({ durationSec: sec(l.duration), distanceM: l.distanceMeters ?? 0 }));
+
 /**
  * Google cannot pin a waypoint, so only the 'auto' stops are optimized, between the last 'first'
  * stop and the first 'last' stop. With pins, a second (non-optimized) call gives the full legs.
  *
  * Open routes (end at the last stop): Google always needs a destination, so the stop farthest from
  * the start becomes the end and the rest are optimized on the way there. Nearby stops come first.
+ *
+ * Stops with a time ("בול בזמן") go through optimizeTimed instead.
  */
 export async function optimizeRoute(input: OptimizeInput, key: string, fetchFn: typeof fetch = fetch): Promise<OptimizeOutput> {
+  if (input.stops.some((s) => s.dueAt != null)) return optimizeTimed(input, key, fetchFn);
   const firsts = input.stops.filter((s) => s.order === 'first');
   let lasts = input.stops.filter((s) => s.order === 'last');
   let autos = input.stops.filter((s) => s.order !== 'first' && s.order !== 'last');
@@ -142,15 +176,7 @@ export async function optimizeRoute(input: OptimizeInput, key: string, fetchFn: 
   const to = lasts[0] ?? end;
 
   const vehicle = input.vehicle ?? 'scooter';
-  let opt = await computeRoute(fetchFn, key, vehicle, from, to, autos, true);
-  let idx = opt.optimizedIntermediateWaypointIndex?.length === autos.length ? opt.optimizedIntermediateWaypointIndex : autos.map((_, i) => i);
-  // Check Google's order against the sweep with one more (non-optimizing) call, and keep the cheaper one.
-  let picked: 'google' | 'sweep' = 'google';
-  const sweep = sweepOrder(from, to, autos);
-  if (autos.length > 2 && sweep.join() !== idx.join()) {
-    const alt = await computeRoute(fetchFn, key, vehicle, from, to, sweep.map((i) => autos[i]), false);
-    if (cost(alt, vehicle) < cost(opt, vehicle)) { opt = alt; idx = sweep; picked = 'sweep'; }
-  }
+  const { idx, route: opt, picked } = await bestOrder(fetchFn, key, vehicle, from, to, autos);
   const ordered = [...firsts, ...idx.map((i) => autos[i]), ...lasts];
 
   // The optimizing call already covers the whole drive unless pinned stops sit outside it.
@@ -158,7 +184,7 @@ export async function optimizeRoute(input: OptimizeInput, key: string, fetchFn: 
   const full = !needFull ? opt
     : input.open ? await computeRoute(fetchFn, key, vehicle, input.origin, ordered.at(-1)!, ordered.slice(0, -1), false)
     : await computeRoute(fetchFn, key, vehicle, input.origin, end, ordered, false);
-  const legs = (full.legs ?? []).map((l) => ({ durationSec: sec(l.duration), distanceM: l.distanceMeters ?? 0 }));
+  const legs = toLegs(full);
   return {
     order: ordered.map((s) => s.id),
     legs,
@@ -166,6 +192,148 @@ export async function optimizeRoute(input: OptimizeInput, key: string, fetchFn: 
     totalDistanceM: full.distanceMeters ?? legs.reduce((a, l) => a + l.distanceM, 0),
     polyline: full.polyline?.encodedPolyline,
     picked,
+  };
+}
+
+/** Arrival at each stop along the legs: drive, wait at a timed stop reached early, then SERVICE_SEC at every stop. */
+export function timeline(ordered: StopIn[], legs: { durationSec: number }[], departAt: number): { deadlines: DeadlineOut[]; waitSec: number; finishAt: number } {
+  let t = departAt, waitSec = 0;
+  const deadlines: DeadlineOut[] = [];
+  ordered.forEach((s, i) => {
+    t += (legs[i]?.durationSec ?? 0) * 1000;
+    if (s.dueAt != null) {
+      const wait = Math.max(0, s.dueAt - t);
+      deadlines.push({ id: s.id, dueAt: s.dueAt, etaAt: t, waitSec: Math.round(wait / 1000), lateSec: Math.round(Math.max(0, t - s.dueAt) / 1000) });
+      waitSec += wait / 1000; t += wait;
+    }
+    t += SERVICE_SEC * 1000;
+  });
+  return { deadlines, waitSec: Math.round(waitSec), finishAt: t + (legs[ordered.length]?.durationSec ?? 0) * 1000 };
+}
+
+const LATE_OK_SEC = 60, WAIT_FILL_SEC = 15 * 60, WAIT_SLACK_SEC = 5 * 60, ROUNDS = 3;
+
+/**
+ * "בול בזמן": some stops have a time the courier must be there by. Google's Routes API has no time
+ * windows, so the timed stops, sorted by time, split the route into segments: before the first, between
+ * each two, and after the last. Every other stop goes to the segment it is most on the way of, each
+ * segment is ordered like a normal route, and one full call gives the real driving times.
+ *
+ * Then up to three repair rounds: a timed stop reached late sheds the stops that cost the most before
+ * it to a later segment; one reached more than 15 minutes early pulls in nearby stops from later on to
+ * use the wait. A round is kept only if it is less late, or as late and finishes sooner. When no order
+ * meets the time, the result still says by how much it is missed.
+ */
+async function optimizeTimed(input: OptimizeInput, key: string, fetchFn: typeof fetch): Promise<OptimizeOutput> {
+  const vehicle = input.vehicle ?? 'scooter';
+  const departAt = input.departAt ?? Date.now();
+  const timed = input.stops.filter((s) => s.dueAt != null).sort((a, b) => a.dueAt! - b.dueAt!);
+  const rest = input.stops.filter((s) => s.dueAt == null);
+  const firsts = rest.filter((s) => s.order === 'first');
+  const lasts = rest.filter((s) => s.order === 'last');
+  const free = rest.filter((s) => s.order !== 'first' && s.order !== 'last');
+  const from: LatLngIn = firsts.at(-1) ?? input.origin;
+  const end: LatLngIn | null = input.open ? null : input.destination ?? input.origin;
+  const k = timed.length;
+  const segFrom = (j: number): LatLngIn => (j === 0 ? from : timed[j - 1]);
+  // null: an open route's last segment, which ends at its farthest stop.
+  const segTo = (j: number): LatLngIn | null => (j < k ? timed[j] : lasts[0] ?? end);
+  const detour = (s: LatLngIn, j: number) => {
+    const a = segFrom(j), b = segTo(j);
+    return b ? distanceM(a, s) + distanceM(s, b) - distanceM(a, b) : distanceM(a, s);
+  };
+  const cheapest = (s: LatLngIn, js: number[]) => js.reduce((best, j) => (detour(s, j) <= detour(s, best) ? j : best));
+  const range = (a: number, b: number) => Array.from({ length: Math.max(0, b - a) }, (_, i) => a + i);
+
+  let picked: 'google' | 'sweep' = 'google';
+  const orderSeg = async (j: number, mids: StopIn[]): Promise<StopIn[]> => {
+    const a = segFrom(j);
+    let b = segTo(j), tail: StopIn[] = [];
+    if (!b) {
+      if (!mids.length) return [];
+      const far = mids.reduce((x, y) => (distanceM(a, y) > distanceM(a, x) ? y : x));
+      mids = mids.filter((s) => s !== far); b = far; tail = [far];
+    }
+    if (mids.length < 2) return [...mids, ...tail];
+    const r = await bestOrder(fetchFn, key, vehicle, a, b, mids);
+    if (r.picked === 'sweep') picked = 'sweep';
+    return [...r.idx.map((i) => mids[i]), ...tail];
+  };
+
+  const evaluate = async (segs: StopIn[][]) => {
+    const parts = await Promise.all(segs.map((mids, j) => orderSeg(j, mids)));
+    const ordered = [...firsts, ...parts.flatMap((part, j) => (j < k ? [...part, timed[j]] : part)), ...lasts];
+    const full = end ? await computeRoute(fetchFn, key, vehicle, input.origin, end, ordered, false)
+      : await computeRoute(fetchFn, key, vehicle, input.origin, ordered.at(-1)!, ordered.slice(0, -1), false);
+    const legs = toLegs(full);
+    const t = timeline(ordered, legs, departAt);
+    return { segs, ordered, full, legs, ...t, lateSec: t.deadlines.reduce((a, d) => a + d.lateSec, 0) };
+  };
+  type Result = Awaited<ReturnType<typeof evaluate>>;
+  const better = (a: Result, b: Result) => a.lateSec < b.lateSec - LATE_OK_SEC || (Math.abs(a.lateSec - b.lateSec) <= LATE_OK_SEC && a.finishAt < b.finishAt);
+
+  // Moves stops between segments, estimating seconds from straight-line metres with this route's own pace.
+  const adjust = (r: Result): StopIn[][] | null => {
+    const pts: LatLngIn[] = [input.origin, ...r.ordered, ...(end ? [end] : [])];
+    const straight = pts.slice(1).reduce((a, p, i) => a + distanceM(pts[i], p), 0);
+    const pace = straight > 0 ? r.legs.reduce((a, l) => a + l.durationSec, 0) / straight : 0.1;
+    const pos = new Map(r.ordered.map((s, i) => [s.id, i + 1]));
+    const saving = (s: StopIn) => {
+      const i = pos.get(s.id)!, prev = pts[i - 1], next = pts[i + 1];
+      return (next ? distanceM(prev, s) + distanceM(s, next) - distanceM(prev, next) : distanceM(prev, s)) * pace + SERVICE_SEC;
+    };
+    const segs = r.segs.map((g) => [...g]);
+    for (let j = 0; j < k; j++) {
+      const d = r.deadlines.find((x) => x.id === timed[j].id)!;
+      if (d.lateSec > LATE_OK_SEC) {
+        const later = range(j + 1, k + 1);
+        const cands = range(0, j + 1).flatMap((g) => segs[g].map((s) => ({ s, g, save: saving(s) }))).sort((x, y) => y.save - x.save);
+        if (!cands.length) continue; // nothing before it to drop: this time cannot be met from here
+        let saved = 0;
+        for (const c of cands) {
+          if (saved >= d.lateSec) break;
+          segs[c.g] = segs[c.g].filter((x) => x !== c.s);
+          segs[cheapest(c.s, later)].push(c.s);
+          saved += c.save;
+        }
+        return segs;
+      }
+      if (d.waitSec > WAIT_FILL_SEC) {
+        const cands = range(j + 1, k + 1).flatMap((g) => segs[g].map((s) => ({ s, g, add: detour(s, j) * pace + SERVICE_SEC }))).sort((x, y) => x.add - y.add);
+        let used = 0, moved = false;
+        for (const c of cands) {
+          if (used + c.add > d.waitSec - WAIT_SLACK_SEC) break;
+          segs[c.g] = segs[c.g].filter((x) => x !== c.s);
+          segs[j].push(c.s);
+          used += c.add; moved = true;
+        }
+        if (moved) return segs;
+      }
+    }
+    return null;
+  };
+
+  const initial: StopIn[][] = Array.from({ length: k + 1 }, () => []);
+  for (const s of free) initial[cheapest(s, range(0, k + 1))].push(s);
+  let best = await evaluate(initial);
+  for (let round = 0; round < ROUNDS; round++) {
+    const next = adjust(best);
+    if (!next) break;
+    const r = await evaluate(next);
+    if (!better(r, best)) break;
+    best = r;
+  }
+
+  const { full, legs } = best;
+  return {
+    order: best.ordered.map((s) => s.id),
+    legs,
+    totalDurationSec: sec(full.duration) || legs.reduce((a, l) => a + l.durationSec, 0),
+    totalDistanceM: full.distanceMeters ?? legs.reduce((a, l) => a + l.distanceM, 0),
+    polyline: full.polyline?.encodedPolyline,
+    picked,
+    deadlines: best.deadlines,
+    waitSec: best.waitSec,
   };
 }
 

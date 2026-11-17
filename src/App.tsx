@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { addStops, canOptimize, editInRoute, orderedStops, removeFromRoute, emptyPlan, endModeOf, findDuplicate, removeStop, startCity, stopsFromText, updateStop } from './domain/plan';
+import { addStops, canOptimize, editInRoute, setDue, orderedStops, removeFromRoute, emptyPlan, endModeOf, findDuplicate, removeStop, startCity, stopsFromText, updateStop } from './domain/plan';
 import { archiveOf } from './domain/archive';
 import { dayKey, routeCsv, withEntry, withoutEntry } from './domain/history';
 import { parseTranscript } from './domain/parser.js';
@@ -161,7 +161,7 @@ export default function App() {
     const report = await buildReport({
       plan: {
         start: p.start, endMode: endModeOf(p), end: p.end, startCity: startCity(p),
-        stops: p.stops.map((s) => ({ spoken: s.spoken, input: s.input, city: s.city, verify: s.verify, fixReason: s.fixReason, address: s.address, located: !!s.location, order: s.order, delivery: s.delivery, failReason: s.failReason })),
+        stops: p.stops.map((s) => ({ spoken: s.spoken, input: s.input, city: s.city, verify: s.verify, fixReason: s.fixReason, address: s.address, located: !!s.location, order: s.order, dueAt: s.dueAt, delivery: s.delivery, failReason: s.failReason })),
         optimized: p.optimized && { stops: p.optimized.order.length, totalDurationSec: p.optimized.totalDurationSec, totalDistanceM: p.optimized.totalDistanceM, at: new Date(p.optimized.at).toISOString() },
       },
       screenError: error || undefined,
@@ -247,14 +247,16 @@ export default function App() {
         <RouteView plan={plan} busy={optimizing} onReoptimize={optimize}
           onDelivery={onDelivery} onReport={exportRoute} onEdit={editRouteStop}
           onNavigate={() => { if (!planRef.current?.startedAt) { logInfo('route_started'); setPlan((p) => (p.startedAt ? p : { ...p, startedAt: Date.now() })); } }}
-          onRemove={(id) => { logInfo('route_remove', id); setPlan((p) => removeFromRoute(p, id)); }} />
+          onRemove={(id) => { logInfo('route_remove', id); setPlan((p) => removeFromRoute(p, id)); }}
+          onDue={(id, due) => { logInfo('due_set', { id, due, sorted: true }); setPlan((p) => setDue(p, id, due)); }} />
       ) : null}
 
       {!plan.optimized && <StartPoint start={plan.start} end={plan.end} onVerify={verifyPlace} onHere={useHere}
         onClearEnd={() => setPlan((p) => ({ ...p, end: null, optimized: undefined }))} />}
       <FixList stops={needsFix} onRetry={onRetry} onAccept={onAccept} onRemove={(id) => setPlan((p) => removeStop(p, id))} />
       {!plan.optimized && <StopList stops={plan.stops} onRemove={(id) => setPlan((p) => removeStop(p, id))}
-        onOrder={(id, order) => setPlan((p) => updateStop(p, id, { order }))} />}
+        onOrder={(id, order) => setPlan((p) => updateStop(p, id, { order }))}
+        onDue={(id, due) => { logInfo('due_set', { id, due }); setPlan((p) => setDue(p, id, due)); }} />}
       <AddStops count={plan.stops.length} max={MAX_STOPS} onAdd={onAdd} />
 
       {!plan.optimized && plan.stops.length > 0 && (

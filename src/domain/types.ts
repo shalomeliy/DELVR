@@ -28,7 +28,12 @@ export interface Stop {
   failReason?: string;
   /** When the courier marked it delivered, pasted or failed. The latest one is where a re-sort starts from. */
   handledAt?: number;
+  /** "בול בזמן": the time ("HH:MM", today) the courier must be at this stop by. The sort plans around it. */
+  dueAt?: string;
 }
+
+/** How a "בול בזמן" stop works out on the sorted route. */
+export interface Deadline { id: string; dueAt: number; etaAt: number; waitSec: number; lateSec: number }
 
 export type EndMode = 'open' | 'return' | 'address';
 
@@ -48,6 +53,10 @@ export interface Optimized {
   at: number;
   /** A stop was edited or removed after sorting, so the times and the line on the map are out of date. */
   stale?: boolean;
+  /** One per "בול בזמן" stop, when the route has any. */
+  deadlines?: Deadline[];
+  /** Minutes spent waiting at "בול בזמן" stops reached early, in seconds. Not in totalDurationSec. */
+  waitSec?: number;
 }
 
 export interface Plan {
@@ -65,3 +74,5 @@ export interface Plan {
 }
 
 export const MAX_STOPS = 25;
+/** Stops with a time on one route. Same cap as the server. */
+export const MAX_TIMED = 5;

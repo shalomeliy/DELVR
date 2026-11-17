@@ -99,6 +99,13 @@ ol.route li.pasted { opacity: .6; }
 .archive-row { width: 100%; flex-direction: column; align-items: flex-start; gap: 2px; text-align: start; border: none; background: none; padding: 4px 0; }
 .archive-detail { margin-top: 6px; }
 .earn { margin: 8px 0 0; }
+.due-chip { display: inline-flex; align-items: center; gap: 2px; background: var(--warn-bg); border-radius: 8px; padding: 0 6px; }
+.due-chip .link { font-weight: 600; color: var(--text); }
+.due-chip .icon { min-height: 28px; min-width: 28px; padding: 0; }
+.due-add { font-size: .85rem; padding: 2px 0; }
+.due-edit { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.due-edit input { flex: 1 1 100%; min-width: 0; }
+.due-edit button { flex: 1; }
 .settings { position: relative; }
 .gear { gap: 6px; padding: 8px 12px; }
 .gear span { font-size: 1.2rem; line-height: 1; }
