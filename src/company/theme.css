@@ -222,3 +222,10 @@
 .co .co-nav-main { margin: 0 0 16px; }
 @media (max-width: 520px) { .co .co-nav-main { display: flex; } .co .co-nav-main button { flex: 1; } }
 .co .co-pick-row > div { flex: 1 1 220px; }
+.co-ref { margin-inline-start: 8px; font-size: 12px; font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums; direction: ltr; unicode-bidi: isolate; }
+.co .co-report { gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.co .co-report button { min-height: 36px; padding: 0 12px; font-size: 13px; }
+.co-live-actions { display: flex; flex-wrap: wrap; gap: 6px; margin: -4px 0 12px; }
+.co .co-live-actions button { min-height: 36px; padding: 0 12px; font-size: 13px; flex: 0 0 auto; }
+.co .co-report { display: inline-flex; gap: 6px; }
+.co .co-report button { flex: 0 0 auto; }

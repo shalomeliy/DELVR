@@ -6,6 +6,7 @@ export interface CStop {
   id: string; seq: number; input: string; address: string | null; lat: number | null; lng: number | null;
   due_at: string | null; note: string | null; delivery: Outcome; fail_code: string | null; fail_reason: string | null; handled_at: string | null;
   proof_path?: string | null;
+  ref?: number | null;
 }
 export interface Prices { price_delivered: number; price_pasted: number; price_failed: number }
 

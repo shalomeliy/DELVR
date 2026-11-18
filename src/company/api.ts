@@ -83,6 +83,8 @@ export interface LiveStop {
   handled_at: string | null; handled_lat: number | null; handled_lng: number | null;
   /** Set after migration 0004, once the courier photographed the door. */
   proof_path?: string | null;
+  /** The delivery number (migration 0005). */
+  ref?: number | null;
 }
 export interface ServerRoute {
   id: string; status: string; version: number; sentAt: string | null; stops: number; marked: number;
@@ -133,4 +135,25 @@ export async function proofUrl(path: string): Promise<string> {
   const r = await supabase().storage.from('proofs').createSignedUrl(path, 600);
   if (r.error) throw new Error(r.error.message);
   return r.data.signedUrl;
+}
+
+export interface FoundStop extends LiveStop { day: string; courierId: string | null }
+
+/** Admin search across all the company's sent routes: by delivery number, address words and/or status. Newest day first. */
+export async function searchStops(companyId: string, q: { ref: number | null; text: string; status: LiveStop['delivery'] | 'all' }): Promise<FoundStop[]> {
+  let req = supabase().from('stops').select('*, routes!inner(company_id, day, courier_id, status)')
+    .eq('routes.company_id', companyId).neq('routes.status', 'draft');
+  if (q.ref) req = req.eq('ref', q.ref);
+  for (const w of q.text.split(' ').filter(Boolean)) req = req.or(`address.ilike.*${w}*,input.ilike.*${w}*`);
+  if (q.status !== 'all') req = req.eq('delivery', q.status);
+  const rows = check(await req.limit(300)) as (LiveStop & { routes: { day: string; courier_id: string | null } })[] | null;
+  return (rows ?? []).map(({ routes, ...x }) => ({ ...x, day: routes.day, courierId: routes.courier_id }))
+    .sort((a, b) => b.day.localeCompare(a.day) || a.seq - b.seq);
+}
+
+/** The photo itself, for the ZIP in the daily report. */
+export async function proofBytes(path: string): Promise<Uint8Array> {
+  const r = await supabase().storage.from('proofs').download(path);
+  if (r.error) throw new Error(r.error.message);
+  return new Uint8Array(await r.data.arrayBuffer());
 }

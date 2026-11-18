@@ -170,7 +170,7 @@ function MyRoute({ me, member }: { me: string; member: Membership }) {
             <section className="co-now" aria-label="העצירה הנוכחית">
               <div className="co-now-head">
                 <div style={{ minWidth: 0 }}>
-                  <span className="co-live co-small">עצירה {nOf(now)} · עכשיו</span>
+                  <span className="co-live co-small">עצירה {nOf(now)} · עכשיו{now.ref ? <span className="co-ref">#{now.ref}</span> : null}</span>
                   <h2 className="co-now-addr">{now.address ?? now.input}</h2>
                   {(now.due_at || now.note) && <span className="co-small">{now.due_at && <span className="co-live">בול בזמן {time(now.due_at)}</span>}{now.due_at && now.note ? ' · ' : ''}{now.note}</span>}
                 </div>
