@@ -78,7 +78,7 @@ export function ReportButtons({ courier, day, list }: { courier: string; day: st
     const taken = new Set<string>(); const files: { name: string; data: Uint8Array }[] = []; let missed = 0;
     for (let i = 0; i < withPhoto.length; i++) {
       setBusy(`מוריד ${i + 1}/${withPhoto.length}`);
-      try { files.push({ name: photoName(withPhoto[i], taken), data: await proofBytes(withPhoto[i].proof_path!) }); } catch { missed++; }
+      try { files.push({ name: photoName(withPhoto[i], taken, courier, (c) => REASON[c] ?? c), data: await proofBytes(withPhoto[i].proof_path!) }); } catch { missed++; }
     }
     if (files.length) save(reportName(courier, day, 'zip'), zip(files), 'application/zip');
     setBusy(missed ? `${missed} תמונות לא ירדו, נסה שוב` : '');

@@ -1,5 +1,5 @@
 // The admin's daily report for one courier: a CSV that opens in Excel (Hebrew intact) and a ZIP of the door photos,
-// each named "<address> - <delivery number>.jpg". Pure, so it is tested without a browser.
+// each named "<address> - <delivery number> - <courier>.jpg". Pure, so it is tested without a browser.
 import type { LiveStop } from './api';
 
 export const STATUS_HE: Record<LiveStop['delivery'], string> = { todo: 'לא סומן', delivered: 'נמסר', pasted: 'הדבקה', failed: 'נכשל' };
@@ -8,9 +8,16 @@ export const STATUS_HE: Record<LiveStop['delivery'], string> = { todo: 'לא ס�
 export const refText = (s: { ref?: number | null }) => (s.ref ? `#${s.ref}` : '');
 
 /** A file name Windows, macOS and phones all accept: no / \ : * ? " < > |, no control characters, not too long. */
-export function photoName(s: Pick<LiveStop, 'address' | 'input'> & { ref?: number | null }, taken = new Set<string>()) {
-  const addr = (s.address ?? s.input).replace(/[\\/:*?"<>|\u0000-\u001f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 80) || 'כתובת';
-  const base = s.ref ? `${addr} - ${s.ref}` : addr;
+const safe = (t: string, max: number) => t.replace(/[\\/:*?"<>|\u0000-\u001f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
+
+export function photoName(s: Pick<LiveStop, 'address' | 'input'> & Partial<Pick<LiveStop, 'delivery' | 'fail_code' | 'fail_reason'>> & { ref?: number | null },
+  taken = new Set<string>(), courier = '', reason: (code: string) => string = (c) => c) {
+  const addr = safe(s.address ?? s.input, 80) || 'כתובת';
+  const who = safe(courier, 40);
+  // What happened: נמסר / הדבקה / נכשל, and for a failure its reason (and the courier's words, if any).
+  const why = s.delivery === 'failed' ? [s.fail_code ? reason(s.fail_code) : '', s.fail_reason ?? ''].filter(Boolean).join(' ') : '';
+  const status = s.delivery && s.delivery !== 'todo' ? safe([STATUS_HE[s.delivery], why].filter(Boolean).join(' '), 60) : '';
+  const base = [addr, s.ref ? String(s.ref) : '', who, status].filter(Boolean).join(' - ');
   let name = `${base}.jpg`;
   for (let i = 2; taken.has(name); i++) name = `${base} (${i}).jpg`;
   taken.add(name);
@@ -29,7 +36,7 @@ export function routeCsv(courier: string, day: string, list: LiveStop[], reason:
   const head = ['מספר משלוח', 'עצירה', 'כתובת', 'סטטוס', 'שעת סימון', 'סיבת כישלון', 'תמונה'];
   const rows = list.map((s) => [refText(s), s.seq, s.address ?? s.input, STATUS_HE[s.delivery], clock(s.handled_at),
     s.delivery === 'failed' ? [s.fail_code ? reason(s.fail_code) : '', s.fail_reason ?? ''].filter(Boolean).join(': ') : '',
-    s.proof_path ? photoName(s, taken) : '']);
+    s.proof_path ? photoName(s, taken, courier, reason) : '']);
   const n = (d: LiveStop['delivery']) => list.filter((s) => s.delivery === d).length;
   const lines = [
     [`דוח משלוחים · ${courier} · ${day}`], [], head, ...rows, [],
