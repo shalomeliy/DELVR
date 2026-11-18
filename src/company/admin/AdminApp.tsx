@@ -9,6 +9,7 @@ import { Login } from './Login';
 import { Calendar } from './Calendar';
 import { Planner, type PlanTarget } from './Planner';
 import { israelDay } from '../time';
+import { Search } from './Search';
 import { Settings } from './Settings';
 import '../theme.css';
 
@@ -16,7 +17,7 @@ type State = { k: 'loading' } | { k: 'out' } | { k: 'no-company' } | { k: 'in'; 
 
 export default function AdminApp() {
   const [s, setS] = useState<State>({ k: 'loading' });
-  const [tab, setTab] = useState<'plan' | 'calendar' | 'couriers' | 'settings'>('plan');
+  const [tab, setTab] = useState<'plan' | 'calendar' | 'couriers' | 'search' | 'settings'>('plan');
   const [target, setTarget] = useState<PlanTarget>(() => ({ courierId: null, day: israelDay() }));
 
   const refresh = useCallback(async () => {
@@ -65,11 +66,13 @@ export default function AdminApp() {
                 <button type="button" aria-current={tab === 'plan' ? 'page' : undefined} onClick={() => setTab('plan')}>מסלול</button>
                 <button type="button" aria-current={tab === 'calendar' ? 'page' : undefined} onClick={() => setTab('calendar')}>יומן</button>
                 <button type="button" aria-current={tab === 'couriers' ? 'page' : undefined} onClick={() => setTab('couriers')}>שליחים</button>
+                <button type="button" aria-current={tab === 'search' ? 'page' : undefined} onClick={() => setTab('search')}>חיפוש</button>
               </nav>
               {tab === 'plan' ? <Planner company={s.company} target={target} onTarget={setTarget} onCalendar={() => setTab('calendar')} onInvite={() => setTab('couriers')} />
                 : tab === 'calendar' ? <Calendar company={s.company} day={target.day} onDay={(day) => setTarget((t) => ({ ...t, day }))}
                     onOpen={(courierId, day) => { setTarget({ courierId: courierId || target.courierId, day }); setTab('plan'); }} />
                 : tab === 'couriers' ? <Couriers company={s.company} />
+                : tab === 'search' ? <Search company={s.company} />
                 : <Settings company={s.company} onBack={() => setTab('plan')} />}
             </>
           )}

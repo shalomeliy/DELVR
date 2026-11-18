@@ -4,7 +4,7 @@ import { dayTitle, monthGrid, monthOf, monthRange, monthTitle, shiftMonth, sumDa
 import { errorText } from '../invite';
 import { israelDay } from '../time';
 import { CallButton } from './Couriers';
-import { LivePanel } from './Live';
+import { LivePanel, ReportButtons } from './Live';
 
 /** The admin's calendar: every day's routes at a glance, and a day's full detail on tap. */
 export function Calendar({ company, day, onDay, onOpen }: {
@@ -84,7 +84,7 @@ export function Calendar({ company, day, onDay, onOpen }: {
           return (
             <LivePanel key={r.id} list={r.list} live={r.day === today}
               title={<>{c?.name ?? 'שליח שהוסר'}{c && <CallButton courier={c} />}</>}
-              actions={r.courierId ? <button type="button" onClick={() => onOpen(r.courierId!, r.day)}>פתח במסלול</button> : undefined} />
+              actions={<><ReportButtons courier={c?.name ?? 'שליח'} day={r.day} list={r.list} />{r.courierId && <button type="button" onClick={() => onOpen(r.courierId!, r.day)}>פתח במסלול</button>}</>} />
           );
         })}
       </div>
