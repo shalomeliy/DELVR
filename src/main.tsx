@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { registerSW } from 'virtual:pwa-register'
 import './index.css'
 import App from './App.tsx'
-import { modeFor } from './company/mode'
+import { applyIdentity, identityFor, modeFor } from './company/mode'
 import { installGlobalHandlers, logInfo } from './services/log'
 
 installGlobalHandlers()
@@ -17,6 +17,8 @@ const AdminApp = lazy(() => import('./company/admin/AdminApp'))
 const CourierApp = lazy(() => import('./company/courier/CourierApp'))
 
 const mode = modeFor(location.pathname)
+const identity = identityFor(mode)
+if (identity) applyIdentity(identity)
 const root = mode === 'admin' ? <AdminApp /> : mode === 'courier' ? <CourierApp /> : <App />
 
 createRoot(document.getElementById('root')!).render(
