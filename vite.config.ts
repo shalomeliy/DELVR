@@ -33,18 +33,18 @@ export default defineConfig(({ mode }) => {
       VitePWA({
         registerType: 'autoUpdate',
         injectRegister: false,
-        includeAssets: ['favicon.svg'],
+        includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
         manifest: {
           name: 'PassIT - מסלול לשליח',
           short_name: 'PassIT',
           description: 'מקריאים כתובות בעברית ומקבלים את הסדר הכי מהיר',
           lang: 'he', dir: 'rtl',
           start_url: '/', display: 'standalone',
-          background_color: '#ffffff', theme_color: '#1d4ed8',
+          background_color: '#0A0E17', theme_color: '#0A0E17',
           icons: [
             { src: 'icon-192.png', sizes: '192x192', type: 'image/png' },
             { src: 'icon-512.png', sizes: '512x512', type: 'image/png' },
-            { src: 'icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+            { src: 'maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
           ],
         },
         workbox: { navigateFallbackDenylist: [/^\/api\//], skipWaiting: true, clientsClaim: true, cleanupOutdatedCaches: true },

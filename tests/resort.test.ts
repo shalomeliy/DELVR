@@ -24,7 +24,7 @@ afterEach(() => vi.unstubAllGlobals());
 describe('re-sort from a picked point', () => {
   it('starts at the picked point and comes back to it when no end is set, with only open stops', async () => {
     const bodies = captureFetch();
-    const opt = await optimizePlan(plan(), undefined, HERE);
+    const opt = await optimizePlan(plan(), undefined, { from: HERE });
     expect(bodies[0].origin).toEqual(HERE);
     expect(bodies[0].destination).toEqual(HERE);
     expect(bodies[0].stops.map((s: { id: string }) => s.id)).toEqual(['b', 'c']);
@@ -33,7 +33,7 @@ describe('re-sort from a picked point', () => {
 
   it('ends at the end address when one is given', async () => {
     const bodies = captureFetch();
-    await optimizePlan(plan({ input: 'סוף', location: END }), undefined, HERE);
+    await optimizePlan(plan({ input: 'סוף', location: END }), undefined, { from: HERE });
     expect(bodies[0].origin).toEqual(HERE);
     expect(bodies[0].destination).toEqual(END);
   });

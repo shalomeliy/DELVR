@@ -59,6 +59,11 @@ export const savePlan = (plan: Plan) => {
   writeBackup(stamped);
   return tx(PLAN, 'readwrite', (s) => s.put(stamped, 'current')).catch(() => undefined);
 };
+/** The company admin's drafts, one per courier and day, next to the solo route in the same store. */
+export const loadDraft = (key: string) =>
+  tx<unknown>(PLAN, 'readonly', (s) => s.get(`draft:${key}`)).then(normalizePlan).catch(() => undefined);
+export const saveDraft = (key: string, plan: Plan) =>
+  tx(PLAN, 'readwrite', (s) => s.put({ ...plan, savedAt: Date.now() }, `draft:${key}`)).catch(() => undefined);
 export const recall = (input: string) => tx<Remembered | undefined>(MEMORY, 'readonly', (s) => s.get(memoryKey(input))).catch(() => undefined);
 export const remember = (input: string, r: Remembered) => tx(MEMORY, 'readwrite', (s) => s.put({ address: r.address, location: r.location, at: Date.now() }, memoryKey(input))).catch(() => undefined);
 
