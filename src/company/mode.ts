@@ -33,9 +33,11 @@ export function courierOrigin(origin: string): string {
 // Each company app installs as its own home-screen app, with its own name, icon and start page.
 export type Identity = { title: string; manifest: string; icon: string; appleIcon: string };
 
-export function identityFor(mode: Mode): Identity | null {
-  if (mode === 'admin') return { title: 'PassIT מנהל', manifest: '/admin.webmanifest', icon: '/admin-192.png', appleIcon: '/admin-apple-touch-icon.png' };
-  if (mode === 'courier') return { title: 'PassIT שליח', manifest: '/courier.webmanifest', icon: '/courier-192.png', appleIcon: '/courier-apple-touch-icon.png' };
+export function identityFor(mode: Mode, hostname = ''): Identity | null {
+  // On its own address the app covers the whole site ("/"), so the phone installs it from any page there.
+  const own = hostMode(hostname) === mode ? '-host' : '';
+  if (mode === 'admin') return { title: 'PassIT מנהל', manifest: `/admin${own}.webmanifest`, icon: '/admin-192.png', appleIcon: '/admin-apple-touch-icon.png' };
+  if (mode === 'courier') return { title: 'PassIT שליח', manifest: `/courier${own}.webmanifest`, icon: '/courier-192.png', appleIcon: '/courier-apple-touch-icon.png' };
   return null;
 }
 

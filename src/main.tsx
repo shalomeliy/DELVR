@@ -17,7 +17,7 @@ const AdminApp = lazy(() => import('./company/admin/AdminApp'))
 const CourierApp = lazy(() => import('./company/courier/CourierApp'))
 
 const mode = modeFor(location.pathname, location.hostname)
-const identity = identityFor(mode)
+const identity = identityFor(mode, location.hostname)
 if (identity) applyIdentity(identity)
 const root = mode === 'admin' ? <AdminApp /> : mode === 'courier' ? <CourierApp /> : <App />
 

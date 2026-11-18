@@ -38,3 +38,17 @@ describe('dedicated addresses', () => {
     expect(courierOrigin('https://delvr-delta.vercel.app')).toBe('https://delvr-delta.vercel.app');
   });
 });
+
+describe('install from a dedicated address', () => {
+  it.each([['admin', 'passit-admin.vercel.app'], ['courier', 'passit-courier.vercel.app']] as const)('%s on %s covers the whole site', (mode, host) => {
+    const id = identityFor(mode, host)!;
+    const manifest = JSON.parse(readFileSync(join('public', id.manifest), 'utf8'));
+    expect([manifest.id, manifest.start_url, manifest.scope]).toEqual(['/', '/', '/']);
+    expect(manifest.short_name).toBe(id.title);
+    expect(modeFor('/', host)).toBe(mode);
+  });
+
+  it('keeps the path manifests on the shared address', () => {
+    expect(identityFor('admin', 'delvr-delta.vercel.app')!.manifest).toBe('/admin.webmanifest');
+  });
+});
