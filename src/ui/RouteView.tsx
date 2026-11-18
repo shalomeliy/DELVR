@@ -73,7 +73,7 @@ export function RouteView({ plan, onDelivery, onReoptimize, onRemove, onEdit, on
         <button type="button" className="ghost" onClick={() => setShowMap((v) => !v)}>{showMap ? 'הסתר מפה' : 'הצג מפה'}</button>
         <button type="button" className="ghost" onClick={onReport}>ייצא דוח</button>
       </div>
-      {showMap && <MapView start={plan.start.location} points={points} polyline={opt.polyline} />}
+      {showMap && <MapView start={opt.from ?? plan.start.location} points={points} polyline={opt.polyline} />}
       <ol className="route">
         {stops.map((s, i) => {
           const leg = routed.has(s.id) ? opt.legs[opt.order.indexOf(s.id)] : undefined;
@@ -143,7 +143,7 @@ export function RouteView({ plan, onDelivery, onReoptimize, onRemove, onEdit, on
           );
         })}
       </ol>
-      {endLeg && <p className="muted small">{endModeOf(plan) === 'address' ? 'לנקודת הסיום' : 'חזרה לנקודת היציאה'}: {fmtDuration(endLeg.durationSec)} · {fmtKm(endLeg.distanceM)}</p>}
+      {endLeg && <p className="muted small">{endModeOf(plan) === 'address' ? 'לנקודת הסיום' : opt.from ? 'חזרה לנקודת ההתחלה' : 'חזרה לנקודת היציאה'}: {fmtDuration(endLeg.durationSec)} · {fmtKm(endLeg.distanceM)}</p>}
       <button type="button" className="ghost" onClick={onReoptimize} disabled={busy}>{busy ? 'מסדר...' : 'סדר מחדש את מה שנשאר'}</button>
     </section>
   );

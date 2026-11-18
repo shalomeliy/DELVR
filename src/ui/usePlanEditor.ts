@@ -163,5 +163,5 @@ export function usePlanEditor(storage: PlanStorage, optimizeOptions?: () => Opti
     finally { setOptimizing(false); }
   };
 
-  return { plan, setPlan, planRef, error, setError, notice, setNotice, optimizing, sortError, verifyPlace, useHere, onAdd, onRetry, onAccept, optimize };
+  return { plan, setPlan, planRef, error, setError, notice, setNotice, optimizing, setOptimizing, sortError, setSortError, verifyPlace, useHere, onAdd, onRetry, onAccept, optimize };
 }

@@ -2,6 +2,8 @@
 
 קוד זמני. בודק את ההנחות המסוכנות לפני שבונים את מצב החברה. התוכנית: `docs/plans/company-mode-PROPOSAL.md`. התוצאה: `docs/spikes/company-mode.md`.
 
+דף הבדיקה החי (`public/spike/`) נמחק במיזוג. האפליקציה האמיתית: `/admin` ו-`/c`.
+
 ## מה יש פה
 | קובץ | מה |
 |---|---|
@@ -10,9 +12,6 @@
 | `../../tests/db/` (עבר לשם) | בדיקות מסד הנתונים. `npm run test:db` (צריך Postgres 15+ מותקן) |
 | `../../tests/outbox.test.ts` (עבר לשם) | 7 בדיקות לתור הסימונים האופליין, רצות ב-`npm test` |
 | `seed.sql` | ל-Supabase: חברת בדיקה, מנהל, שני שליחים ומסלול להיום |
-| `../../public/spike/company.html` | דף הבדיקה החי (מנהל ושליח באותו דף, לפי מי שמתחבר). יושב ב-`public` כדי שיעלה ל-Vercel. **למחוק לפני מיזוג** |
-| `../../public/spike/outbox.mjs` | עותק התור לדף הספייק. הגרסה האמיתית: `src/company/outbox.ts` |
-| `../../public/spike/supabase.js` | supabase-js 2.118.0 (UMD) מועתק מחבילת npm, כדי שהדף לא יהיה תלוי ב-CDN |
 
 ## בדיקה חיה (כ-15 דקות, צריך אותך)
 1. **Supabase:** נכנסים ל-supabase.com, יוצרים פרויקט חינמי (אזור: Frankfurt או הכי קרוב).
