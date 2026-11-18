@@ -13,6 +13,8 @@ const s = (seq: number, address: string, delivery: LiveStop['delivery'], extra: 
 describe('report', () => {
   it('names a photo by address and delivery number, safe for any OS', () => {
     expect(photoName(s(1, 'הרצל 12, יבנה', 'delivered'))).toBe('הרצל 12, יבנה - 100001.jpg');
+    expect(photoName(s(1, 'הרצל 12, יבנה', 'delivered'), new Set(), 'שלומי כהן')).toBe('הרצל 12, יבנה - 100001 - שלומי כהן.jpg');
+    expect(photoName({ address: 'x', input: 'x' }, new Set(), 'דני/לוי')).toBe('x - דני לוי.jpg');
     expect(photoName(s(2, 'א/ב: "ג"?', 'delivered'))).toBe('א ב ג - 100002.jpg');
     const taken = new Set<string>();
     photoName({ address: 'x', input: 'x' }, taken);
@@ -24,7 +26,7 @@ describe('report', () => {
       s(1, 'הרצל 12', 'delivered', { proof_path: 'p' }), s(2, 'שבזי 4', 'pasted'),
       s(3, '=HYPERLINK("x")', 'failed', { fail_code: 'moved', fail_reason: 'אמר השכן' }), s(4, 'דואני 30', 'todo')], () => 'עבר דירה');
     expect(csv.startsWith('﻿')).toBe(true);
-    expect(csv).toContain('"#100001","1","הרצל 12","נמסר","10:30","","הרצל 12 - 100001.jpg"');
+    expect(csv).toContain('"#100001","1","הרצל 12","נמסר","10:30","","הרצל 12 - 100001 - שלומי.jpg"');
     expect(csv).toContain('"עבר דירה: אמר השכן"');
     expect(csv).toContain(`"'=HYPERLINK(""x"")"`);
     expect(csv).toContain('"נמסרו","1"');
