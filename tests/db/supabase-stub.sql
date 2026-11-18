@@ -25,3 +25,15 @@ create or replace function t_error(q text) returns text language plpgsql as $$
 begin execute q; return 'NO ERROR';
 exception when others then return sqlerrm; end $$;
 grant execute on function t_rows(text), t_error(text) to authenticated, anon;
+
+-- Storage: the bucket and object tables and foldername(), as Supabase has them.
+create schema if not exists storage;
+create table if not exists storage.buckets (id text primary key, name text not null, public boolean default false);
+create table if not exists storage.objects (id uuid primary key default gen_random_uuid(), bucket_id text references storage.buckets, name text, owner uuid default auth.uid());
+create or replace function storage.foldername(name text) returns text[] language plpgsql immutable as $$
+declare _parts text[];
+begin _parts := string_to_array(name, '/'); return _parts[1:array_length(_parts, 1) - 1]; end $$;
+alter table storage.objects enable row level security;
+grant usage on schema storage to authenticated, anon;
+grant select, insert, update, delete on storage.objects to authenticated;
+grant select on storage.buckets to authenticated;

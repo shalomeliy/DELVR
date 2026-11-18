@@ -175,3 +175,50 @@
 .co .co-pass-eye { position: absolute; left: 4px; top: 50%; transform: translateY(-50%); min-height: 40px; width: 44px; padding: 0;
   background: transparent; border: 0; color: var(--muted); }
 .co .co-pass-eye:hover, .co .co-pass-eye[aria-pressed='true'] { color: var(--live); }
+
+/* Map card that folds away */
+.co-mapcard { position: relative; }
+.co .co-map-toggle { position: absolute; top: 14px; inset-inline-start: 14px; z-index: 2; display: inline-flex; align-items: center; gap: 6px;
+  min-height: 36px; padding: 0 12px; border-radius: 999px; background: rgba(10, 14, 23, .85); border: 1px solid var(--line2); color: var(--text); font-size: 13px; font-weight: 600; }
+.co .co-map-closed .co-map-toggle { position: static; width: 100%; justify-content: center; background: transparent; border-color: transparent; color: var(--muted); }
+.co .co-map-closed { padding: 4px; }
+.co .co-gear { display: inline-flex; align-items: center; gap: 6px; } .co .co-gear[aria-current="page"] { color: var(--text); }
+.co-name-row { display: inline-flex; align-items: center; gap: 8px; }
+.co .co-call { display: inline-grid; place-items: center; width: 32px; height: 32px; border-radius: 999px; background: rgba(200, 245, 96, .12); color: var(--live); border: 1px solid rgba(200, 245, 96, .3); }
+.co .co-call:hover { background: rgba(200, 245, 96, .22); }
+
+/* Courier dropdown and day button in the planner */
+.co .co-select-row { width: 100%; }
+.co .co-select { flex: 1; min-height: 48px; padding: 0 14px; border-radius: 14px; background: var(--panel2); color: var(--text); border: 1px solid var(--line2);
+  font: inherit; font-weight: 700; font-size: 16px; appearance: auto; }
+.co .co-daybtn { width: 100%; min-height: 48px; display: flex; align-items: center; gap: 8px; justify-content: flex-start; font-weight: 700; }
+.co .co-daybtn .co-small { margin-inline-start: auto; font-weight: 500; }
+
+/* Calendar */
+@media (min-width: 900px) { .co-grid.co-cal-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; } }
+.co-cal { display: flex; flex-direction: column; gap: 6px; }
+.co-cal-row { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+.co-cal-wd { text-align: center; color: var(--muted); font-size: 12px; font-weight: 600; }
+.co .co-cal-cell { position: relative; min-height: 58px; padding: 6px 4px; border-radius: 12px; background: var(--panel2); border: 1px solid var(--line);
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 2px; color: var(--text); }
+.co .co-cal-cell.empty { background: transparent; border-color: transparent; }
+.co .co-cal-cell b { font-size: 15px; }
+.co .co-cal-cell.today { border-color: var(--live); }
+.co .co-cal-cell.has { background: rgba(200, 245, 96, .08); }
+.co .co-cal-cell[aria-selected='true'] { background: var(--live); color: var(--bg); border-color: var(--live); }
+.co .co-cal-cell[aria-selected='true'] .co-cal-meta { color: var(--bg); }
+.co-cal-meta { font-size: 11px; color: var(--muted); line-height: 1.2; }
+.co-cal-fail { position: absolute; top: 6px; inset-inline-end: 6px; width: 7px; height: 7px; border-radius: 50%; background: var(--fail); }
+
+/* Door photo */
+.co-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.co .co-photo { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 36px; padding: 0 12px;
+  border-radius: 999px; border: 1px solid var(--line2); background: var(--panel2); color: var(--text); font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.co .co-photo.big { width: 100%; min-height: 52px; border-radius: 16px; font-size: 16px; margin-top: 12px; border-style: dashed; border-color: var(--live); color: var(--live); background: rgba(200, 245, 96, .06); }
+.co .co-photo.done { border-color: rgba(200, 245, 96, .4); color: var(--live); border-style: solid; }
+.co .co-photo.wait { border-color: var(--paste); color: var(--paste); }
+.co .co-photo:focus-within { outline: 2px solid var(--live); outline-offset: 2px; }
+.co-head-tools { display: flex; align-items: center; gap: 4px; }
+.co .co-nav-main { margin: 0 0 16px; }
+@media (max-width: 520px) { .co .co-nav-main { display: flex; } .co .co-nav-main button { flex: 1; } }
+.co .co-pick-row > div { flex: 1 1 220px; }

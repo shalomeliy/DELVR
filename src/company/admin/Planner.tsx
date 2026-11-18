@@ -9,32 +9,34 @@ import { MapView } from '../../ui/MapView';
 import { StartPoint } from '../../ui/StartPoint';
 import { StopList } from '../../ui/StopList';
 import { usePlanEditor, type PlanStorage } from '../../ui/usePlanEditor';
-import { getRoute, listCouriers, sendRoute, watchRoute, type Company, type Courier, type LiveStop, type ServerRoute } from '../api';
-import { errorText, initials } from '../invite';
+import { getRoute, listCouriers, sendRoute, watchRoute, type Company, type Courier, type ServerRoute } from '../api';
+import { errorText } from '../invite';
 import { cannotSend, dayIso, departFor, toSendPayload } from '../send';
+import { MapCard } from '../MapCard';
+import { CallButton } from './Couriers';
+import { LivePanel, lastMark } from './Live';
+import { prefs, type Vehicle } from '../prefs';
 import { israelTime } from '../time';
+import { dayTitle } from '../calendar';
 
-type Vehicle = 'scooter' | 'car';
-const DAYS = [{ offset: 0, label: 'היום' }, { offset: 1, label: 'מחר' }];
 const clock = (iso: string) => new Date(iso).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jerusalem' });
 
-export function Planner({ company, onInvite }: { company: Company; onInvite: () => void }) {
+/** Which courier and day the planner shows. Kept by AdminApp, so the calendar can open a day here. */
+export interface PlanTarget { courierId: string | null; day: string }
+
+export function Planner({ company, target, onTarget, onCalendar, onInvite }: {
+  company: Company; target: PlanTarget; onTarget: (t: PlanTarget) => void; onCalendar: () => void; onInvite: () => void;
+}) {
   const [couriers, setCouriers] = useState<Courier[] | null>(null);
-  const [courierId, setCourierId] = useState<string | null>(null);
-  const [offset, setOffset] = useState(0);
-  const [vehicle, setVehicle] = useState<Vehicle>('scooter');
   const [loadErr, setLoadErr] = useState('');
+  const vehicle: Vehicle = prefs.vehicle(company.id);
+  const { day } = target;
 
   useEffect(() => {
-    listCouriers(company.id).then((all) => {
-      const active = all.filter((c) => c.active);
-      setCouriers(active);
-      setCourierId((id) => id ?? active[0]?.userId ?? null);
-    }).catch((x) => setLoadErr(errorText(x)));
+    listCouriers(company.id).then((all) => setCouriers(all.filter((c) => c.active))).catch((x) => setLoadErr(errorText(x)));
   }, [company.id]);
 
-  const courier = couriers?.find((c) => c.userId === courierId) ?? null;
-  const day = dayIso(offset);
+  const courier = couriers?.find((c) => c.userId === target.courierId) ?? couriers?.[0] ?? null;
 
   if (loadErr) return <div className="co-msg bad" role="alert">{loadErr}</div>;
   if (!couriers) return <p className="co-muted">טוען...</p>;
@@ -48,29 +50,23 @@ export function Planner({ company, onInvite }: { company: Company; onInvite: () 
   return (
     <>
       <section className="co-card co-pickers" aria-label="למי ולאיזה יום">
-        <div>
-          <span className="co-label">שליח</span>
-          <div className="co-chips" role="radiogroup" aria-label="שליח">
-            {couriers.map((c) => (
-              <button key={c.userId} type="button" role="radio" aria-checked={c.userId === courierId} className="co-chip" onClick={() => setCourierId(c.userId)}>
-                <span className="co-chip-av" aria-hidden="true">{initials(c.name)}</span>{c.name}
-              </button>
-            ))}
-          </div>
-        </div>
         <div className="co-pick-row">
           <div>
-            <span className="co-label">יום</span>
-            <div className="co-tabs co-tabs-sm" role="group" aria-label="יום">
-              {DAYS.map((d) => <button key={d.offset} type="button" aria-pressed={offset === d.offset} onClick={() => setOffset(d.offset)}>{d.label}</button>)}
+            <label className="co-label" htmlFor="co-courier">שליח</label>
+            <div className="co-name-row co-select-row">
+              <select id="co-courier" className="co-select" value={courier?.userId ?? ''} onChange={(e) => onTarget({ courierId: e.target.value, day })}>
+                {couriers.map((c) => <option key={c.userId} value={c.userId}>{c.name}</option>)}
+              </select>
+              {courier && <CallButton courier={courier} />}
             </div>
           </div>
           <div>
-            <span className="co-label">רכב</span>
-            <div className="co-tabs co-tabs-sm" role="group" aria-label="רכב">
-              <button type="button" aria-pressed={vehicle === 'scooter'} onClick={() => setVehicle('scooter')}>קטנוע</button>
-              <button type="button" aria-pressed={vehicle === 'car'} onClick={() => setVehicle('car')}>רכב</button>
-            </div>
+            <span className="co-label">יום</span>
+            <button type="button" className="co-daybtn" onClick={onCalendar}>
+              <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="3" /><path d="M16 2v4M8 2v4M3 10h18" /></svg>
+              <b>{day === dayIso(0) ? 'היום' : day === dayIso(1) ? 'מחר' : dayTitle(day)}</b>{day === dayIso(0) || day === dayIso(1) ? <span className="co-muted">{Number(day.slice(8))}.{Number(day.slice(5, 7))}</span> : null}
+              <span className="co-muted co-small">החלף ביומן</span>
+            </button>
           </div>
         </div>
       </section>
@@ -152,7 +148,7 @@ function Editor({ company, courier, day, vehicle }: { company: Company; courier:
         </div>
       )}
       <div className="co-grid co-plan">
-        {mode === 'live' && server ? <LivePanel server={server} seenAt={seenAt} /> : <div className="co-solo">
+        {mode === 'live' && server ? <LivePanel list={server.list} seenAt={seenAt} /> : <div className="co-solo">
           {plan.optimized ? (
             <section className="co-card">
               <div className="co-card-head">
@@ -193,7 +189,7 @@ function Editor({ company, courier, day, vehicle }: { company: Company; courier:
         </div>}
 
         <aside className="co-side">
-          <section className="co-card co-mapcard">
+          <MapCard where="admin">
             {mode === 'live' && server ? (
               <MapView dark start={server.start?.lat != null && server.start.lng != null ? { lat: server.start.lat, lng: server.start.lng } : undefined}
                 points={server.list.filter((x) => x.lat != null && x.lng != null).map((x) => ({ lat: x.lat!, lng: x.lng!, label: String(x.seq), status: x.delivery }))}
@@ -203,7 +199,7 @@ function Editor({ company, courier, day, vehicle }: { company: Company; courier:
                 points={(plan.optimized ? ordered : plan.stops).filter((s) => s.location).map((s, i) => ({ ...s.location!, label: String(i + 1), status: 'todo' }))}
                 polyline={plan.optimized && !plan.optimized.stale ? plan.optimized.polyline : undefined} />
             )}
-          </section>
+          </MapCard>
           {mode === 'draft' && <div className="co-desk co-sendbox">
             {main}
             {hint && <div className={`co-small ${sendErr && plan.optimized ? 'co-danger' : 'co-muted'}`} role={sendErr ? 'alert' : undefined}>{hint}</div>}
@@ -219,48 +215,3 @@ function Editor({ company, courier, day, vehicle }: { company: Company; courier:
   );
 }
 
-const STATUS: Record<LiveStop['delivery'], string> = { todo: 'בדרך', delivered: 'נמסר', pasted: 'הדבקה', failed: 'נכשל' };
-/** The default reasons every company starts with (seed_fail_reasons in 0001). */
-const REASON: Record<string, string> = { bad_address: 'כתובת שגויה', incomplete: 'כתובת חסרה', not_known: 'לא מוכר בכתובת', moved: 'עבר דירה',
-  deceased: 'נפטר', vacant: 'בניין ריק או נטוש', no_place: 'אין איפה להדביק', other: 'אחר' };
-const failText = (x: LiveStop) => [x.fail_code ? REASON[x.fail_code] ?? x.fail_code : null, x.fail_reason].filter(Boolean).join(': ');
-
-/** Where the courier made the most recent mark, from the location the phone sent with it. */
-function lastMark(list: LiveStop[]) {
-  const m = list.filter((x) => x.handled_at && x.handled_lat != null && x.handled_lng != null)
-    .sort((a, b) => b.handled_at!.localeCompare(a.handled_at!))[0];
-  return m ? { lat: m.handled_lat!, lng: m.handled_lng! } : undefined;
-}
-
-function LivePanel({ server, seenAt }: { server: ServerRoute; seenAt: number | null }) {
-  const n = (d: LiveStop['delivery']) => server.list.filter((x) => x.delivery === d).length;
-  const next = server.list.find((x) => x.delivery === 'todo');
-  return (
-    <section className="co-card" aria-label="מעקב חי">
-      <div className="co-card-head">
-        <h2><span className="co-dot live co-pulse" style={{ display: 'inline-block', marginInlineEnd: 8 }} />מעקב חי</h2>
-        <span className="co-muted co-small">{seenAt ? `עודכן ${clock(new Date(seenAt).toISOString())}` : ''}</span>
-      </div>
-      <div className="co-kpis">
-        <div><b className="co-ok">{n('delivered')}</b><span>נמסרו</span></div>
-        <div><b className="co-paste">{n('pasted')}</b><span>הדבקות</span></div>
-        <div><b className="co-danger">{n('failed')}</b><span>נכשלו</span></div>
-        <div><b>{n('todo')}</b><span>נשארו</span></div>
-      </div>
-      <ol className="co-seq">
-        {server.list.map((x) => (
-          <li key={x.id} className={x === next ? 'co-next' : undefined}>
-            <span className={`co-seq-n ${x.delivery}`}>{x.seq}</span>
-            <span className="co-person-main"><b>{x.address ?? x.input}</b>
-              <span className="co-small co-muted">
-                {x === next ? <span className="co-live">הבאה בתור</span> : STATUS[x.delivery]}
-                {x.handled_at ? ` · ${clock(x.handled_at)}` : x.due_at ? ` · בול בזמן ${clock(x.due_at)}` : ''}
-                {x.delivery === 'failed' && failText(x) ? ` · ${failText(x)}` : ''}
-              </span>
-            </span>
-          </li>
-        ))}
-      </ol>
-    </section>
-  );
-}

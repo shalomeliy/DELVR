@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { cancelInvite, createInvite, listCouriers, listOpenInvites, setCourierActive, type Company, type Courier, type Invite } from '../api';
+import { cancelInvite, createInvite, listCouriers, listOpenInvites, setCourierActive, updateCourier, type Company, type Courier, type Invite } from '../api';
+import { telLink } from '../people';
 import { errorText, expiresIn, initials, inviteLink, inviteMessage, inviteState, whatsappLink } from '../invite';
 
 /** Who the new link is for: a new courier, or an existing one whose phone lost its sign-in. */
@@ -11,6 +12,7 @@ export function Couriers({ company }: { company: Company }) {
   const [err, setErr] = useState('');
   const [draft, setDraft] = useState<Draft | null>(null);
   const [shown, setShown] = useState<Invite | null>(null);
+  const [editing, setEditing] = useState<Courier | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -44,8 +46,9 @@ export function Couriers({ company }: { company: Company }) {
               {active.map((c) => (
                 <li key={c.userId} className="co-person">
                   <span className="co-ring" style={{ background: 'var(--line2)' }} aria-hidden="true"><span>{initials(c.name)}</span></span>
-                  <span className="co-person-main"><b>{c.name}</b><span className="co-pill"><span className="co-dot live" />פעיל</span></span>
+                  <span className="co-person-main"><b className="co-name-row">{c.name}<CallButton courier={c} /></b><span className="co-pill"><span className="co-dot live" />פעיל{c.phone ? ` · ${c.phone}` : ''}</span></span>
                   <span className="co-person-acts">
+                    <button type="button" onClick={() => setEditing(c)}>עריכה</button>
                     <button type="button" onClick={() => setDraft({ name: c.name, replaces: c })} title="אם השליח החליף טלפון או מחק את נתוני הדפדפן">קישור לטלפון חדש</button>
                     <button type="button" className="co-quiet co-danger" onClick={() => act(() => setCourierActive(company.id, c.userId, false))}>השבת</button>
                   </span>
@@ -102,6 +105,7 @@ export function Couriers({ company }: { company: Company }) {
           onCreated={async (inv) => { setDraft(null); setShown(inv); await load(); }} />
       )}
       {shown && <LinkSheet company={company} invite={shown} onClose={() => setShown(null)} />}
+      {editing && <EditSheet company={company} courier={editing} onClose={() => setEditing(null)} onSaved={async () => { setEditing(null); await load(); }} />}
     </>
   );
 }
@@ -166,6 +170,48 @@ function LinkSheet({ company, invite, onClose }: { company: Company; invite: Inv
         <button type="button" onClick={copy} aria-live="polite">{copied ? 'הועתק' : 'העתק הודעה'}</button>
       </div>
       <button type="button" className="co-quiet co-wide" style={{ marginTop: 10 }} onClick={onClose}>סגור</button>
+    </Sheet>
+  );
+}
+
+/** Calls the courier. Shown only when the admin saved a phone number for them. */
+export function CallButton({ courier }: { courier: Courier }) {
+  if (!courier.phone) return null;
+  return (
+    <a className="co-call" href={telLink(courier.phone)} aria-label={`חייג ל${courier.name}`} title={`חייג ל${courier.name}`} onClick={(e) => e.stopPropagation()}>
+      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.5c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2z" /></svg>
+    </a>
+  );
+}
+
+function EditSheet({ company, courier, onClose, onSaved }: { company: Company; courier: Courier; onClose: () => void; onSaved: () => void }) {
+  const [name, setName] = useState(courier.name);
+  const [phone, setPhone] = useState(courier.phone ?? '');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true); setErr('');
+    try { await updateCourier(company.id, courier.userId, name, phone); onSaved(); }
+    catch (x) {
+      const msg = errorText(x);
+      setErr(/phone/.test(String((x as Error)?.message)) ? 'צריך להריץ קודם את עדכון מסד הנתונים 0004 (מספר טלפון)' : msg);
+    } finally { setBusy(false); }
+  }
+  return (
+    <Sheet title="עריכת שליח" onClose={onClose}>
+      <form onSubmit={save}>
+        <h2 style={{ marginTop: 0 }}>עריכת שליח</h2>
+        <label htmlFor="co-edit-name">שם</label>
+        <input id="co-edit-name" value={name} onChange={(e) => setName(e.target.value)} autoComplete="off" required />
+        <label htmlFor="co-edit-phone" style={{ marginTop: 12 }}>טלפון (לכפתור החיוג)</label>
+        <input id="co-edit-phone" type="tel" inputMode="tel" dir="ltr" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="050-1234567" autoComplete="off" />
+        {err && <div className="co-msg bad" role="alert" style={{ marginTop: 12 }}>{err}</div>}
+        <div className="co-row" style={{ marginTop: 16 }}>
+          <button type="button" onClick={onClose}>ביטול</button>
+          <button type="submit" className="co-primary" disabled={busy || !name.trim()}>{busy ? 'שומר...' : 'שמור'}</button>
+        </div>
+      </form>
     </Sheet>
   );
 }

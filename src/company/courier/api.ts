@@ -50,7 +50,7 @@ export async function nextRoute(me: string, today: string, yesterday: string): P
 
 export async function routeStops(routeId: string): Promise<CStop[]> {
   return (check(await supabase().from('stops')
-    .select('id, seq, input, address, lat, lng, due_at, note, delivery, fail_code, fail_reason, handled_at')
+    .select('*')
     .eq('route_id', routeId).order('seq')) ?? []) as CStop[];
 }
 
@@ -73,4 +73,13 @@ export function watch(me: string, routeId: string | null, onChange: () => void) 
   if (routeId) ch.on('postgres_changes', { event: '*', schema: 'public', table: 'stops', filter: `route_id=eq.${routeId}` }, onChange);
   ch.subscribe();
   return () => { void supabase().removeChannel(ch); };
+}
+
+/** Uploads the door photo into the stop's own folder and links it to the stop. Throws when offline; the caller keeps it queued. */
+export async function uploadProof(companyId: string, routeId: string, stopId: string, photo: Blob, id: string) {
+  const path = `${companyId}/${routeId}/${stopId}/${id}.jpg`;
+  const up = await supabase().storage.from('proofs').upload(path, photo, { contentType: 'image/jpeg', upsert: false });
+  // A retry after a lost answer finds the file already there: that is fine, link it.
+  if (up.error && !/exists|duplicate/i.test(up.error.message)) throw new Error(up.error.message);
+  check(await supabase().rpc('set_stop_proof', { p_stop: stopId, p_path: path }));
 }
