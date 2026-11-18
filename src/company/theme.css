@@ -170,3 +170,8 @@
 .co-pulse { animation: co-pulse 1.8s infinite; }
 @media (prefers-reduced-motion: reduce) { .co-pulse { animation: none; } }
 .co .co-courier-map .map { height: 260px; border-radius: 22px; margin: 0; }
+.co-pass { position: relative; }
+.co-pass input { padding-left: 52px; }
+.co .co-pass-eye { position: absolute; left: 4px; top: 50%; transform: translateY(-50%); min-height: 40px; width: 44px; padding: 0;
+  background: transparent; border: 0; color: var(--muted); }
+.co .co-pass-eye:hover, .co .co-pass-eye[aria-pressed='true'] { color: var(--live); }
