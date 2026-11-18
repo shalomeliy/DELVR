@@ -28,6 +28,7 @@ export default function CourierApp() {
 
   useEffect(() => {
     document.title = 'PassIT · המסלול שלי'; document.body.style.background = '#0A0E17';
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#0A0E17');
     if (!hasSupabase()) return;
     (async () => {
       try {

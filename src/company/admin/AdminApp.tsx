@@ -30,7 +30,8 @@ export default function AdminApp() {
     return () => sub.unsubscribe();
   }, [refresh]);
 
-  useEffect(() => { document.title = 'PassIT מנהל'; document.body.style.background = '#0A0E17'; }, []);
+  useEffect(() => { document.title = 'PassIT מנהל'; document.body.style.background = '#0A0E17';
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#0A0E17'); }, []);
 
   return (
     <main className="co" dir="rtl" lang="he">
