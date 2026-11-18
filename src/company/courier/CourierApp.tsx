@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { hasMapsKey } from '../../services/maps';
 import { googleMapsUrl, wazeUrl } from '../../services/navigation';
+import { MapView } from '../../ui/MapView';
 import { inviteToken } from '../invite';
 import { MissingKeys } from '../Missing';
 import { backoffMs, createOutbox, localStore, type Mark, type Outcome } from '../outbox';
@@ -170,6 +172,14 @@ function MyRoute({ me, member }: { me: string; member: Membership }) {
             </section>
           ) : (
             <div className="co-card co-empty" style={{ borderStyle: 'solid' }}><b className="co-live" style={{ fontSize: 20 }}>סיימת את המסלול</b><br />{p.delivered} נמסרו · {p.pasted} הדבקות · {p.failed} נכשלו</div>
+          )}
+
+          {hasMapsKey() && (
+            <section className="co-card co-mapcard co-courier-map" aria-label="מפת המסלול">
+              <MapView dark start={route.start?.lat != null && route.start.lng != null ? { lat: route.start.lat, lng: route.start.lng } : undefined}
+                points={shown.filter((x) => x.lat != null && x.lng != null).map((x) => ({ lat: x.lat!, lng: x.lng!, label: String(nOf(x)), status: x.delivery }))}
+                polyline={route.optimized?.polyline} />
+            </section>
           )}
 
           {upcoming.length > 0 && (

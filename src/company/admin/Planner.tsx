@@ -9,14 +9,14 @@ import { MapView } from '../../ui/MapView';
 import { StartPoint } from '../../ui/StartPoint';
 import { StopList } from '../../ui/StopList';
 import { usePlanEditor, type PlanStorage } from '../../ui/usePlanEditor';
-import { getRoute, listCouriers, sendRoute, type Company, type Courier, type ServerRoute } from '../api';
+import { getRoute, listCouriers, sendRoute, watchRoute, type Company, type Courier, type LiveStop, type ServerRoute } from '../api';
 import { errorText, initials } from '../invite';
 import { cannotSend, dayIso, departFor, toSendPayload } from '../send';
 import { israelTime } from '../time';
 
 type Vehicle = 'scooter' | 'car';
 const DAYS = [{ offset: 0, label: 'היום' }, { offset: 1, label: 'מחר' }];
-const clock = (iso: string) => new Date(iso).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
+const clock = (iso: string) => new Date(iso).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Jerusalem' });
 
 export function Planner({ company, onInvite }: { company: Company; onInvite: () => void }) {
   const [couriers, setCouriers] = useState<Courier[] | null>(null);
@@ -89,10 +89,25 @@ function Editor({ company, courier, day, vehicle }: { company: Company; courier:
   const [sendErr, setSendErr] = useState('');
   const [sent, setSent] = useState('');
 
-  const refresh = useCallback(() => { getRoute(company.id, courier.userId, day).then(setServer).catch(() => setServer(null)); }, [company.id, courier.userId, day]);
+  const [view, setView] = useState<'live' | 'draft' | null>(null);
+  const [seenAt, setSeenAt] = useState<number | null>(null);
+
+  const refresh = useCallback(() => {
+    getRoute(company.id, courier.userId, day).then((r) => { setServer(r); setSeenAt(Date.now()); }).catch(() => setServer((x) => x ?? null));
+  }, [company.id, courier.userId, day]);
   useEffect(refresh, [refresh]);
+  // Marks arrive by realtime; a slow poll covers a dropped connection.
+  useEffect(() => {
+    if (!server?.id) return;
+    const stop = watchRoute(server.id, refresh);
+    const t = setInterval(refresh, 15_000);
+    return () => { stop(); clearInterval(t); };
+  }, [server?.id, refresh]);
 
   if (!plan) return <p className="co-muted">טוען...</p>;
+
+  const hasLive = !!server && server.status !== 'draft' && server.list.length > 0;
+  const mode = view ?? (hasLive ? 'live' : 'draft');
 
   const gate = canOptimize(plan);
   const blocked = cannotSend(plan);
@@ -130,8 +145,14 @@ function Editor({ company, courier, day, vehicle }: { company: Company; courier:
       {ed.notice && <div className="co-msg ok">{ed.notice}</div>}
       {sent && <div className="co-msg ok" role="status">{sent}. הוא יראה את המסלול כשיפתח את הקישור שלו.</div>}
 
+      {hasLive && (
+        <div className="co-tabs co-tabs-sm" role="group" aria-label="תצוגה" style={{ maxWidth: 420 }}>
+          <button type="button" aria-pressed={mode === 'live'} onClick={() => setView('live')}>מעקב חי</button>
+          <button type="button" aria-pressed={mode === 'draft'} onClick={() => setView('draft')}>עריכה ושליחה מחדש</button>
+        </div>
+      )}
       <div className="co-grid co-plan">
-        <div className="co-solo">
+        {mode === 'live' && server ? <LivePanel server={server} seenAt={seenAt} /> : <div className="co-solo">
           {plan.optimized ? (
             <section className="co-card">
               <div className="co-card-head">
@@ -169,25 +190,77 @@ function Editor({ company, courier, day, vehicle }: { company: Company; courier:
             </>
           )}
           {!plan.optimized && <AddStops count={plan.stops.length} max={MAX_STOPS} onAdd={ed.onAdd} />}
-        </div>
+        </div>}
 
         <aside className="co-side">
           <section className="co-card co-mapcard">
-            <MapView start={plan.start.location}
-              points={(plan.optimized ? ordered : plan.stops).filter((s) => s.location).map((s, i) => ({ ...s.location!, label: String(i + 1), status: 'todo' }))}
-              polyline={plan.optimized && !plan.optimized.stale ? plan.optimized.polyline : undefined} />
+            {mode === 'live' && server ? (
+              <MapView dark start={server.start?.lat != null && server.start.lng != null ? { lat: server.start.lat, lng: server.start.lng } : undefined}
+                points={server.list.filter((x) => x.lat != null && x.lng != null).map((x) => ({ lat: x.lat!, lng: x.lng!, label: String(x.seq), status: x.delivery }))}
+                polyline={server.polyline ?? undefined} here={lastMark(server.list)} />
+            ) : (
+              <MapView dark start={plan.start.location}
+                points={(plan.optimized ? ordered : plan.stops).filter((s) => s.location).map((s, i) => ({ ...s.location!, label: String(i + 1), status: 'todo' }))}
+                polyline={plan.optimized && !plan.optimized.stale ? plan.optimized.polyline : undefined} />
+            )}
           </section>
-          <div className="co-desk co-sendbox">
+          {mode === 'draft' && <div className="co-desk co-sendbox">
             {main}
             {hint && <div className={`co-small ${sendErr && plan.optimized ? 'co-danger' : 'co-muted'}`} role={sendErr ? 'alert' : undefined}>{hint}</div>}
-          </div>
+          </div>}
         </aside>
       </div>
 
-      <div className="co-dock co-dock-col">
+      {mode === 'draft' && <div className="co-dock co-dock-col">
         {hint && <div className={`co-small ${sendErr && plan.optimized ? 'co-danger' : 'co-muted'}`}>{hint}</div>}
         {main}
-      </div>
+      </div>}
     </>
+  );
+}
+
+const STATUS: Record<LiveStop['delivery'], string> = { todo: 'בדרך', delivered: 'נמסר', pasted: 'הדבקה', failed: 'נכשל' };
+/** The default reasons every company starts with (seed_fail_reasons in 0001). */
+const REASON: Record<string, string> = { bad_address: 'כתובת שגויה', incomplete: 'כתובת חסרה', not_known: 'לא מוכר בכתובת', moved: 'עבר דירה',
+  deceased: 'נפטר', vacant: 'בניין ריק או נטוש', no_place: 'אין איפה להדביק', other: 'אחר' };
+const failText = (x: LiveStop) => [x.fail_code ? REASON[x.fail_code] ?? x.fail_code : null, x.fail_reason].filter(Boolean).join(': ');
+
+/** Where the courier made the most recent mark, from the location the phone sent with it. */
+function lastMark(list: LiveStop[]) {
+  const m = list.filter((x) => x.handled_at && x.handled_lat != null && x.handled_lng != null)
+    .sort((a, b) => b.handled_at!.localeCompare(a.handled_at!))[0];
+  return m ? { lat: m.handled_lat!, lng: m.handled_lng! } : undefined;
+}
+
+function LivePanel({ server, seenAt }: { server: ServerRoute; seenAt: number | null }) {
+  const n = (d: LiveStop['delivery']) => server.list.filter((x) => x.delivery === d).length;
+  const next = server.list.find((x) => x.delivery === 'todo');
+  return (
+    <section className="co-card" aria-label="מעקב חי">
+      <div className="co-card-head">
+        <h2><span className="co-dot live co-pulse" style={{ display: 'inline-block', marginInlineEnd: 8 }} />מעקב חי</h2>
+        <span className="co-muted co-small">{seenAt ? `עודכן ${clock(new Date(seenAt).toISOString())}` : ''}</span>
+      </div>
+      <div className="co-kpis">
+        <div><b className="co-ok">{n('delivered')}</b><span>נמסרו</span></div>
+        <div><b className="co-paste">{n('pasted')}</b><span>הדבקות</span></div>
+        <div><b className="co-danger">{n('failed')}</b><span>נכשלו</span></div>
+        <div><b>{n('todo')}</b><span>נשארו</span></div>
+      </div>
+      <ol className="co-seq">
+        {server.list.map((x) => (
+          <li key={x.id} className={x === next ? 'co-next' : undefined}>
+            <span className={`co-seq-n ${x.delivery}`}>{x.seq}</span>
+            <span className="co-person-main"><b>{x.address ?? x.input}</b>
+              <span className="co-small co-muted">
+                {x === next ? <span className="co-live">הבאה בתור</span> : STATUS[x.delivery]}
+                {x.handled_at ? ` · ${clock(x.handled_at)}` : x.due_at ? ` · בול בזמן ${clock(x.due_at)}` : ''}
+                {x.delivery === 'failed' && failText(x) ? ` · ${failText(x)}` : ''}
+              </span>
+            </span>
+          </li>
+        ))}
+      </ol>
+    </section>
   );
 }

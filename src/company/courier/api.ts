@@ -9,7 +9,7 @@ function check<D>(r: { data: D; error: { message: string } | null }): D {
 }
 
 export interface Membership { companyId: string; name: string; company: string; prices: Prices }
-export interface CRoute { id: string; day: string; version: number; status: string }
+export interface CRoute { id: string; day: string; version: number; status: string; start: { lat?: number; lng?: number } | null; optimized: { polyline?: string } | null }
 export interface Reason { code: string; label: string; needs_text: boolean }
 
 /** A phone that opens an invite gets a permanent anonymous identity, kept in localStorage. */
@@ -43,7 +43,7 @@ export async function myMembership(me: string): Promise<Membership | null> {
  * is not finished, so a shift that runs past midnight, or a route sent for the day just ended, is not lost.
  */
 export async function nextRoute(me: string, today: string, yesterday: string): Promise<CRoute | null> {
-  const rows = (check(await supabase().from('routes').select('id, day, version, status')
+  const rows = (check(await supabase().from('routes').select('id, day, version, status, start, optimized')
     .eq('courier_id', me).gte('day', yesterday).not('status', 'in', '(draft,done)').order('day')) ?? []) as CRoute[];
   return pickRoute(rows, today);
 }

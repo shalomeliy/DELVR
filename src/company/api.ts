@@ -14,7 +14,8 @@ function check<R extends Res>(r: R): Exclude<(R extends { error: null } ? R['dat
 }
 
 export const auth = {
-  session: async () => check(await supabase().auth.getSession()).session,
+  /** The admin's session. An anonymous one belongs to a courier phone and never counts here. */
+  session: async () => { const s = check(await supabase().auth.getSession()).session; return s && !s.user.is_anonymous ? s : null; },
   onChange: (fn: () => void) => supabase().auth.onAuthStateChange(() => fn()).data.subscription,
   signIn: async (email: string, password: string) => { check(await supabase().auth.signInWithPassword({ email, password })); },
   /** Returns true when Supabase wants the email confirmed first. */
@@ -63,15 +64,36 @@ export async function setCourierActive(companyId: string, userId: string, active
   check(await supabase().from('members').update({ active }).eq('company_id', companyId).eq('user_id', userId));
 }
 
-export interface ServerRoute { id: string; status: string; version: number; sentAt: string | null; stops: number; marked: number }
+export interface LiveStop {
+  id: string; seq: number; input: string; address: string | null; lat: number | null; lng: number | null; due_at: string | null;
+  delivery: 'todo' | 'delivered' | 'pasted' | 'failed'; fail_code: string | null; fail_reason: string | null;
+  handled_at: string | null; handled_lat: number | null; handled_lng: number | null;
+}
+export interface ServerRoute {
+  id: string; status: string; version: number; sentAt: string | null; stops: number; marked: number;
+  start: { lat?: number; lng?: number } | null; polyline: string | null; list: LiveStop[];
+}
 
 /** The route already on the server for this courier and day, if any. */
 export async function getRoute(companyId: string, courierId: string, day: string): Promise<ServerRoute | null> {
-  const rows = check(await supabase().from('routes').select('id, status, version, sent_at, stops(delivery)')
+  const rows = check(await supabase().from('routes')
+    .select('id, status, version, sent_at, start, optimized, stops(id, seq, input, address, lat, lng, due_at, delivery, fail_code, fail_reason, handled_at, handled_lat, handled_lng)')
     .eq('company_id', companyId).eq('courier_id', courierId).eq('day', day).limit(1));
-  const r = (rows ?? [])[0] as { id: string; status: string; version: number; sent_at: string | null; stops: { delivery: string }[] } | undefined;
+  const r = (rows ?? [])[0] as { id: string; status: string; version: number; sent_at: string | null; start: ServerRoute['start'];
+    optimized: { polyline?: string } | null; stops: LiveStop[] } | undefined;
   if (!r) return null;
-  return { id: r.id, status: r.status, version: r.version, sentAt: r.sent_at, stops: r.stops.length, marked: r.stops.filter((s) => s.delivery !== 'todo').length };
+  const list = [...r.stops].sort((a, b) => a.seq - b.seq);
+  return { id: r.id, status: r.status, version: r.version, sentAt: r.sent_at, stops: list.length, marked: list.filter((s) => s.delivery !== 'todo').length,
+    start: r.start, polyline: r.optimized?.polyline ?? null, list };
+}
+
+/** Calls onChange whenever this route or its stops change: the courier's marks arrive here within seconds. */
+export function watchRoute(routeId: string, onChange: () => void) {
+  const ch = supabase().channel(`admin-route-${routeId}`)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'stops', filter: `route_id=eq.${routeId}` }, onChange)
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'routes', filter: `id=eq.${routeId}` }, onChange)
+    .subscribe();
+  return () => { void supabase().removeChannel(ch); };
 }
 
 export async function sendRoute(companyId: string, courierId: string, day: string, vehicle: 'scooter' | 'car', p: SendPayload) {
