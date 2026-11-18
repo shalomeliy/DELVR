@@ -3,10 +3,12 @@ import { hasMapsKey } from '../../services/maps';
 import { googleMapsUrl, wazeUrl } from '../../services/navigation';
 import { MapView } from '../../ui/MapView';
 import { inviteToken } from '../invite';
+import { MapCard } from '../MapCard';
 import { MissingKeys } from '../Missing';
 import { backoffMs, createOutbox, localStore, type Mark, type Outcome } from '../outbox';
 import { hasSupabase } from '../supabase';
-import { acceptInvite, failReasons, myId, myMembership, nextRoute, routeStops, sendMark, watch, type CRoute, type Membership, type Reason } from './api';
+import { acceptInvite, failReasons, myId, myMembership, nextRoute, routeStops, sendMark, uploadProof, watch, type CRoute, type Membership, type Reason } from './api';
+import { flushProofs, idbProofs, shrink } from './proofs';
 import { courierError, currentStop, greeting, israelDay, progress, withPending, type CStop } from './route';
 import '../theme.css';
 
@@ -71,6 +73,8 @@ function MyRoute({ me, member }: { me: string; member: Membership }) {
   const [rejected, setRejected] = useState('');
   const [online, setOnline] = useState(navigator.onLine);
   const version = useRef<number | null>(null);
+  const [photoWait, setPhotoWait] = useState<Set<string>>(new Set());
+  const [photoErr, setPhotoErr] = useState('');
 
   const store = useMemo(() => localStore(`passit_outbox_${me}`), [me]);
   const outbox = useMemo(() => createOutbox({
@@ -78,6 +82,8 @@ function MyRoute({ me, member }: { me: string; member: Membership }) {
     onRejected: (_m, err) => setRejected(courierError(err)),
   }), [store]);
   const syncPending = useCallback(async () => setPending(await store.load()), [store]);
+  const proofs = useMemo(() => idbProofs(me), [me]);
+  const syncPhotos = useCallback(async () => setPhotoWait(new Set((await proofs.all()).map((p) => p.stopId))), [proofs]);
 
   const load = useCallback(async () => {
     try {
@@ -100,9 +106,12 @@ function MyRoute({ me, member }: { me: string; member: Membership }) {
     clearTimeout(timer.current);
     const r = await outbox.flush();
     await syncPending();
+    const ph = await flushProofs(proofs, (x) => uploadProof(x.companyId, x.routeId, x.stopId, x.photo, x.id));
+    await syncPhotos();
+    if (ph.sent) void load();
     if (r.left > 0) { setOnline(false); timer.current = window.setTimeout(flush, backoffMs(attempt.current++)); }
     else { attempt.current = 0; if (r.sent) { setOnline(true); void load(); } }
-  }, [outbox, syncPending, load]);
+  }, [outbox, syncPending, proofs, syncPhotos, load]);
   useEffect(() => {
     void flush();
     const on = () => { attempt.current = 0; void flush(); };
@@ -124,6 +133,17 @@ function MyRoute({ me, member }: { me: string; member: Membership }) {
     await syncPending();
     void flush();
   }
+
+  async function photo(stop: CStop, file: File) {
+    if (!route) return;
+    setPhotoErr('');
+    try {
+      await proofs.put({ id: crypto.randomUUID(), companyId: member.companyId, routeId: route.id, stopId: stop.id, photo: await shrink(file), at: Date.now() });
+      await syncPhotos();
+      void flush();
+    } catch { setPhotoErr('לא הצלחתי לשמור את התמונה. נסה לצלם שוב'); }
+  }
+  const photoState = (x: CStop) => (photoWait.has(x.id) ? 'wait' : x.proof_path ? 'done' : 'none');
 
   if (route === undefined) return <p className="co-muted">טוען את המסלול...</p>;
 
@@ -161,6 +181,8 @@ function MyRoute({ me, member }: { me: string; member: Membership }) {
                 )}
               </div>
               {now.lat != null && now.lng != null && <a className="co-small co-muted" href={googleMapsUrl({ lat: now.lat, lng: now.lng })} target="_blank" rel="noopener noreferrer">או ב-Google Maps</a>}
+              <PhotoButton state={photoState(now)} onFile={(f) => photo(now, f)} big />
+              {photoErr && <div className="co-msg bad" role="alert">{photoErr}</div>}
               {failing ? (
                 <FailPicker reasons={reasons} onCancel={() => setFailing(false)} onPick={(code, text) => mark(now, 'failed', code, text)} />
               ) : (
@@ -176,11 +198,11 @@ function MyRoute({ me, member }: { me: string; member: Membership }) {
           )}
 
           {hasMapsKey() && (
-            <section className="co-card co-mapcard co-courier-map" aria-label="מפת המסלול">
+            <MapCard where="courier" className="co-courier-map">
               <MapView dark start={route.start?.lat != null && route.start.lng != null ? { lat: route.start.lat, lng: route.start.lng } : undefined}
                 points={shown.filter((x) => x.lat != null && x.lng != null).map((x) => ({ lat: x.lat!, lng: x.lng!, label: String(nOf(x)), status: x.delivery }))}
                 polyline={route.optimized?.polyline} />
-            </section>
+            </MapCard>
           )}
 
           {upcoming.length > 0 && (
@@ -207,6 +229,7 @@ function MyRoute({ me, member }: { me: string; member: Membership }) {
                     <span className="co-person-main"><b>{x.address ?? x.input}</b>
                       <span className="co-small co-muted">{OUTCOME[x.delivery as Exclude<Outcome, 'todo'>]}{x.handled_at ? ` · ${time(x.handled_at)}` : ''}{x.fail_code ? ` · ${reasons.find((r) => r.code === x.fail_code)?.label ?? ''}${x.fail_reason ? `: ${x.fail_reason}` : ''}` : ''}</span>
                     </span>
+                    <PhotoButton state={photoState(x)} onFile={(f) => photo(x, f)} />
                     <button type="button" className="co-quiet" onClick={() => mark(x, 'todo')}>בטל</button>
                   </li>
                 ))}
@@ -217,8 +240,8 @@ function MyRoute({ me, member }: { me: string; member: Membership }) {
       )}
 
       <div className="co-foot co-small" role="status">
-        <span className={`co-dot ${pending.length ? 'warn' : online ? 'live' : 'bad'}`} />
-        {pending.length ? `ממתינים לשליחה: ${pending.length}. יישלחו לבד כשתהיה קליטה` : online ? 'מחובר · כל הסימונים נשלחו' : 'אין חיבור לשרת'}
+        <span className={`co-dot ${pending.length || photoWait.size ? 'warn' : online ? 'live' : 'bad'}`} />
+        {pending.length || photoWait.size ? `ממתינים לשליחה: ${pending.length ? `${pending.length} סימונים` : ''}${pending.length && photoWait.size ? ' ו-' : ''}${photoWait.size ? `${photoWait.size} תמונות` : ''}. יישלחו לבד כשתהיה קליטה` : online ? 'מחובר · כל הסימונים נשלחו' : 'אין חיבור לשרת'}
       </div>
     </>
   );
@@ -244,5 +267,19 @@ function FailPicker({ reasons, onPick, onCancel }: { reasons: Reason[]; onPick: 
         <button type="button" className="co-mark failed" disabled={!ok} onClick={() => code && onPick(code, text.trim() || null)}>שמור נכשל</button>
       </div>
     </div>
+  );
+}
+
+const CAMERA = <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" /><circle cx="12" cy="13" r="4" /></svg>;
+
+/** Opens the back camera. The photo of the door is the proof that the courier was there. */
+function PhotoButton({ state, onFile, big = false }: { state: 'none' | 'wait' | 'done'; onFile: (f: File) => void; big?: boolean }) {
+  const label = state === 'done' ? (big ? 'צולם · צלם שוב' : 'צולם') : state === 'wait' ? 'התמונה ממתינה לשליחה' : big ? 'צלם את הדלת' : 'צלם';
+  return (
+    <label className={`co-photo ${big ? 'big' : ''} ${state}`}>
+      {CAMERA}<span>{label}</span>
+      <input type="file" accept="image/*" capture="environment" className="co-sr"
+        onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) onFile(f); }} />
+    </label>
   );
 }

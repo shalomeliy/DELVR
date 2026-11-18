@@ -1,9 +1,11 @@
 // Every call company mode makes to Supabase. Screens import from here, never from supabase-js directly.
 import type { SendPayload } from './send';
+import type { DayRoute } from './calendar';
+import { cleanName, cleanPhone } from './people';
 import { supabase } from './supabase';
 
 export interface Company { id: string; name: string }
-export interface Courier { userId: string; name: string; active: boolean }
+export interface Courier { userId: string; name: string; active: boolean; phone: string | null }
 export interface Invite { token: string; name: string; expiresAt: string; replaces: string | null; createdAt?: string }
 
 /** Supabase answers with an error object; turn it into a thrown Error with its message. */
@@ -39,9 +41,11 @@ export async function createCompany(name: string, adminName: string): Promise<st
 }
 
 export async function listCouriers(companyId: string): Promise<Courier[]> {
-  const rows = check(await supabase().from('members').select('user_id, name, active')
+  // '*' rather than a column list, so the screen still loads before migration 0004 (phone) has run.
+  const rows = check(await supabase().from('members').select('*')
     .eq('company_id', companyId).eq('role', 'courier').order('name'));
-  return ((rows ?? []) as { user_id: string; name: string; active: boolean }[]).map((r) => ({ userId: r.user_id, name: r.name, active: r.active }));
+  return ((rows ?? []) as { user_id: string; name: string; active: boolean; phone?: string | null }[])
+    .map((r) => ({ userId: r.user_id, name: r.name, active: r.active, phone: r.phone ?? null }));
 }
 
 /** Links not opened yet. Expired ones are listed too, so the admin sees why a courier could not join. */
@@ -60,6 +64,15 @@ export async function cancelInvite(token: string) {
   check(await supabase().from('invites').delete().eq('token', token));
 }
 
+/** The admin changes a courier's name or phone. The courier's phone shows the new name on its next load. */
+export async function updateCourier(companyId: string, userId: string, name: string, phone: string) {
+  const clean = cleanName(name);
+  if (!clean) throw new Error('צריך שם');
+  const tel = cleanPhone(phone);
+  if (tel === false) throw new Error('מספר טלפון לא תקין');
+  check(await supabase().from('members').update({ name: clean, phone: tel }).eq('company_id', companyId).eq('user_id', userId).eq('role', 'courier'));
+}
+
 export async function setCourierActive(companyId: string, userId: string, active: boolean) {
   check(await supabase().from('members').update({ active }).eq('company_id', companyId).eq('user_id', userId));
 }
@@ -68,6 +81,8 @@ export interface LiveStop {
   id: string; seq: number; input: string; address: string | null; lat: number | null; lng: number | null; due_at: string | null;
   delivery: 'todo' | 'delivered' | 'pasted' | 'failed'; fail_code: string | null; fail_reason: string | null;
   handled_at: string | null; handled_lat: number | null; handled_lng: number | null;
+  /** Set after migration 0004, once the courier photographed the door. */
+  proof_path?: string | null;
 }
 export interface ServerRoute {
   id: string; status: string; version: number; sentAt: string | null; stops: number; marked: number;
@@ -77,7 +92,7 @@ export interface ServerRoute {
 /** The route already on the server for this courier and day, if any. */
 export async function getRoute(companyId: string, courierId: string, day: string): Promise<ServerRoute | null> {
   const rows = check(await supabase().from('routes')
-    .select('id, status, version, sent_at, start, optimized, stops(id, seq, input, address, lat, lng, due_at, delivery, fail_code, fail_reason, handled_at, handled_lat, handled_lng)')
+    .select('id, status, version, sent_at, start, optimized, stops(*)')
     .eq('company_id', companyId).eq('courier_id', courierId).eq('day', day).limit(1));
   const r = (rows ?? [])[0] as { id: string; status: string; version: number; sent_at: string | null; start: ServerRoute['start'];
     optimized: { polyline?: string } | null; stops: LiveStop[] } | undefined;
@@ -85,6 +100,15 @@ export async function getRoute(companyId: string, courierId: string, day: string
   const list = [...r.stops].sort((a, b) => a.seq - b.seq);
   return { id: r.id, status: r.status, version: r.version, sentAt: r.sent_at, stops: list.length, marked: list.filter((s) => s.delivery !== 'todo').length,
     start: r.start, polyline: r.optimized?.polyline ?? null, list };
+}
+
+/** Every route of the company in a date range, with its stops: the calendar. */
+export async function listRoutes(companyId: string, from: string, to: string): Promise<DayRoute[]> {
+  const rows = check(await supabase().from('routes')
+    .select('id, courier_id, day, status, version, sent_at, stops(*)')
+    .eq('company_id', companyId).gte('day', from).lte('day', to).order('day'));
+  return ((rows ?? []) as { id: string; courier_id: string | null; day: string; status: string; version: number; sent_at: string | null; stops: LiveStop[] }[])
+    .map((r) => ({ id: r.id, courierId: r.courier_id, day: r.day, status: r.status, version: r.version, sentAt: r.sent_at, list: [...r.stops].sort((a, b) => a.seq - b.seq) }));
 }
 
 /** Calls onChange whenever this route or its stops change: the courier's marks arrive here within seconds. */
@@ -102,4 +126,11 @@ export async function sendRoute(companyId: string, courierId: string, day: strin
     p_vehicle: vehicle, p_optimized: p.optimized, p_stops: p.stops,
   })) as { version: number; sent_at: string };
   return r;
+}
+
+/** A short-lived link to a proof photo, for the admin to open. */
+export async function proofUrl(path: string): Promise<string> {
+  const r = await supabase().storage.from('proofs').createSignedUrl(path, 600);
+  if (r.error) throw new Error(r.error.message);
+  return r.data.signedUrl;
 }
