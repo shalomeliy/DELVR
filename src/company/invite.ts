@@ -1,8 +1,9 @@
 // Pure helpers for invite links, kept apart from the screens so they are tested.
 import type { Invite } from './api';
+import { courierOrigin } from './mode';
 
 /** The token goes after '#', so it never reaches a server log or a Referer header. */
-export const inviteLink = (token: string, origin = location.origin) => `${origin}/c#invite=${token}`;
+export const inviteLink = (token: string, origin = courierOrigin(location.origin)) => `${origin}/c#invite=${token}`;
 
 export const inviteToken = (hash: string) => /(?:^#|&)invite=([0-9a-f]{32})(?:&|$)/.exec(hash)?.[1] ?? null;
 
