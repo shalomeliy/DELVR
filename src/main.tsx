@@ -16,7 +16,7 @@ registerSW({ immediate: true, onRegisteredSW: (_url, reg) => { if (reg) setInter
 const AdminApp = lazy(() => import('./company/admin/AdminApp'))
 const CourierApp = lazy(() => import('./company/courier/CourierApp'))
 
-const mode = modeFor(location.pathname)
+const mode = modeFor(location.pathname, location.hostname)
 const identity = identityFor(mode)
 if (identity) applyIdentity(identity)
 const root = mode === 'admin' ? <AdminApp /> : mode === 'courier' ? <CourierApp /> : <App />
