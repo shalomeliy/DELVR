@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <!-- "Add to Home Screen" from this page opens it as its own app, to test the iPhone home-screen mode. -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="PassIT קול" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <title>PassIT ניסוי הקלטה</title>
+    <style>
+      :root { color-scheme: dark; --bg: #0a0e17; --card: #131a29; --line: #26314a; --text: #e8edf7; --muted: #8b97b0; --accent: #3b82f6; --bad: #f87171; --good: #4ade80; }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+      main { max-width: 640px; margin: 0 auto; padding: 16px; padding-bottom: 48px; }
+      h1 { font-size: 20px; margin: 4px 0 12px; }
+      .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin-bottom: 12px; }
+      .muted { color: var(--muted); font-size: 14px; }
+      .bad { color: var(--bad); }
+      input, button { font: inherit; }
+      input { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid var(--line); background: #0d1320; color: var(--text); margin-bottom: 8px; }
+      button { padding: 12px 14px; border-radius: 10px; border: 1px solid var(--line); background: #1b2438; color: var(--text); cursor: pointer; }
+      button.primary { background: var(--accent); border-color: var(--accent); color: #fff; width: 100%; font-weight: 600; }
+      button.rec { width: 100%; font-size: 18px; font-weight: 700; padding: 18px; background: #1d3a6b; }
+      button.rec.live { background: #7f1d1d; border-color: #b91c1c; }
+      button:disabled { opacity: .5; }
+      .seg { display: flex; gap: 8px; margin-bottom: 12px; }
+      .seg button { flex: 1; }
+      .seg button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+      .meter { height: 10px; background: #0d1320; border-radius: 6px; overflow: hidden; margin: 10px 0 4px; }
+      .meter div { height: 100%; width: 0; background: var(--good); transition: width .08s; }
+      .row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+      pre { white-space: pre-wrap; word-break: break-word; background: #0d1320; border-radius: 8px; padding: 10px; margin: 6px 0 0; font: inherit; min-height: 1.5em; }
+      table { width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 6px; }
+      td, th { border-bottom: 1px solid var(--line); padding: 4px 6px; text-align: right; }
+      [hidden] { display: none !important; }
+    </style>
+  </head>
+  <body>
+    <main id="app"></main>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
