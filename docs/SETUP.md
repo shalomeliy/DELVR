@@ -163,6 +163,10 @@ PassIT משתמש בשני מפתחות:
    |---|---|
    | `VITE_GOOGLE_MAPS_KEY` | מפתח הדפדפן מסעיף 4 |
    | `GOOGLE_ROUTES_KEY` | מפתח השרת מסעיף 4 |
+   | `OPENAI_API_KEY` | להקלטה קולית: תמלול (platform.openai.com > API keys). רק בשרת |
+   | `ANTHROPIC_API_KEY` | להקלטה קולית: ניקוי הכתובות ב-Claude Haiku (platform.claude.com > API keys). רק בשרת |
+
+   את שני מפתחות ההקלטה מסמנים גם ל-**Preview**, אחרת ההקלטה לא תעבוד בכתובות התצוגה המקדימה. מומלץ לקבוע תקרת הוצאה חודשית בשני החשבונות.
 
 6. **Deploy**. אחרי כדקה מתקבלת כתובת בסגנון `https://passit-xxxx.vercel.app`.
 7. חוזרים ל-Google Cloud ומוסיפים את הכתובת הזו להגבלת האתרים של מפתח הדפדפן (סעיף 4), בצורה `https://passit-xxxx.vercel.app/*`.

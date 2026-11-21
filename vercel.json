@@ -1,8 +1,25 @@
 {
+  "functions": {
+    "api/transcribe-stops.ts": {
+      "maxDuration": 30
+    }
+  },
   "rewrites": [
-    { "source": "/admin", "destination": "/index.html" },
-    { "source": "/admin/:path*", "destination": "/index.html" },
-    { "source": "/c", "destination": "/index.html" },
-    { "source": "/c/:path*", "destination": "/index.html" }
+    {
+      "source": "/admin",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/admin/:path*",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/c",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/c/:path*",
+      "destination": "/index.html"
+    }
   ]
 }
